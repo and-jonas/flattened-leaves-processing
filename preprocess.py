@@ -9,9 +9,16 @@ import shutil
 import cv2
 import os
 import exifread
+from pyzbar.pyzbar import decode
 from tqdm import tqdm
-import pytesseract
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+# matplotlib.use('Qt5Agg')
+from qreader import QReader
 
+#instantiate QR reader
+qreader = QReader()
 
 parent_dir = Path(
     "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages/1510"
@@ -19,49 +26,7 @@ parent_dir = Path(
 
 MAX_WIDTH = 3200
 WORKERS = min(8, (os.cpu_count() or 4))
-WHITE_LABEL_THRESHOLD = 200  # Threshold for detecting white regions (0-255)
-MIN_LABEL_WIDTH = 500        # Minimum width of labeled region
-MIN_LABEL_HEIGHT = 100       # Minimum height of labeled region
-
-
-def find_white_label_region(img: cv2.Mat) -> tuple:
-    """
-    Detect the white label region in the image.
-    Returns (y_start, y_end, x_start, x_end) of the label region, or None if not found.
-    """
-    h, w = img.shape[:2]
-    
-    # Create binary image of white regions
-    white_mask = cv2.inRange(img, WHITE_LABEL_THRESHOLD, 255)
-    
-    # Find contours of white regions
-    contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    # Find the largest white region
-    largest_contour = None
-    largest_area = 0
-    
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        x, y, contour_w, contour_h = cv2.boundingRect(contour)
-        
-        # Filter by size constraints
-        if contour_w >= MIN_LABEL_WIDTH and contour_h >= MIN_LABEL_HEIGHT and area > largest_area:
-            largest_area = area
-            largest_contour = (x, y, contour_w, contour_h)
-    
-    if largest_contour is None:
-        return None
-    
-    x, y, label_w, label_h = largest_contour
-    # Add padding around detected region
-    padding = 20
-    y_start = max(0, y - padding)
-    y_end = min(h, y + label_h + padding)
-    x_start = max(0, x - padding)
-    x_end = min(w, x + label_w + padding)
-    
-    return (y_start, y_end, x_start, x_end)
+PARALLEL = True          # Set to False for sequential processing, True for parallel
 
 
 def extract_datetime_original(file_path: Path) -> str:
@@ -75,37 +40,21 @@ def extract_datetime_original(file_path: Path) -> str:
     return dtime.replace(" ", "_")
 
 
-def read_label_text(file_path: Path, img: cv2.Mat) -> str:
-    """
-    Extract and read text from the detected white label region.
-    Uses automatic white region detection instead of fixed coordinates.
-    """
-    label_region = find_white_label_region(img)
-    
-    if label_region is None:
-        # Fall back to file stem if no white label found
-        return file_path.stem
-    
-    y_start, y_end, x_start, x_end = label_region
-    text_region = img[y_start:y_end, x_start:x_end]
-    
-    # OCR to extract text from the white label region
-    text = pytesseract.image_to_string(text_region).strip()
-    return text if text else file_path.stem
-
-
 def decode_barcode(file_path: Path) -> str:
     """
-    Read text from white label region in image.
-    Falls back to file stem if no label is found.
+    Search for QR code within the white label region.
+    Returns file stem if no QR code is found.
     """
-    img = cv2.imread(str(file_path), cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread(str(file_path), cv2.IMREAD_COLOR)
+
     if img is None:
         return file_path.stem
-    
-    # Read text from the white label region
-    return read_label_text(file_path, img)
 
+    # Create a QReader instance
+    decoded_text = qreader.detect_and_decode(image=img)
+    if decoded_text and decoded_text[0]:
+        return decoded_text[0]   
+    return file_path.stem
 
 def make_unique_file(dst: Path) -> Path:
     if not dst.exists():
@@ -131,7 +80,7 @@ def process_file(file_path: Path, output_dir: Path) -> tuple[Path, Path]:
 
 
 def process_directory(directory: Path) -> None:
-    jpeg_files = list(directory.glob("*.JPG"))
+    jpeg_files = list(directory.glob("*.JPG"))[31:]
     if not jpeg_files:
         return
 
@@ -140,19 +89,26 @@ def process_directory(directory: Path) -> None:
     renamed_dir.mkdir(exist_ok=True)
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
-        # submit tasks so we can track completions
-        futures = [executor.submit(process_file, p, renamed_dir) for p in jpeg_files]
-
-        if tqdm is not None:
-            with tqdm(total=len(jpeg_files), desc=f"Processing {directory.name}", unit="file") as pbar:
+    
+    if PARALLEL:
+        # Parallel processing with thread pool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            futures = [executor.submit(process_file, p, renamed_dir) for p in jpeg_files]
+            
+            if tqdm is not None:
+                with tqdm(total=len(jpeg_files), desc=f"Processing {directory.name}", unit="file") as pbar:
+                    for fut in concurrent.futures.as_completed(futures):
+                        res = fut.result()
+                        results.append(res)
+                        pbar.update(1)
+            else:
                 for fut in concurrent.futures.as_completed(futures):
-                    res = fut.result()
-                    results.append(res)
-                    pbar.update(1)
-        else:
-            for fut in concurrent.futures.as_completed(futures):
-                results.append(fut.result())
+                    results.append(fut.result())
+    else:
+        # Sequential processing
+        for file_path in tqdm(jpeg_files, desc=f"Processing {directory.name}", unit="file"):
+            result = process_file(file_path, renamed_dir)
+            results.append(result)
 
     log_path = directory / "renaming_log.csv"
     with log_path.open("w", encoding="utf-8") as log_file:
