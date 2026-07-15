@@ -8,10 +8,11 @@ from sklearn.decomposition import PCA
 
 INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
 OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40")
-INPUT_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
-OUTPUT_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40")
+# INPUT_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
+# OUTPUT_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40")
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
+PARALLEL = True
 
 
 def make_inference_crop(img_path):
@@ -52,20 +53,36 @@ def make_inference_crop(img_path):
     crop = img[y1:y2, x1:x2]
  
     rel = img_path.relative_to(INPUT_DIR)
-    out_path = OUTPUT_DIR / rel / "inference_crops"
+    
+    out_path = OUTPUT_DIR / rel.parent / "inference_crops" / (img_path.stem + ".png")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-
     cv2.imwrite(str(out_path), crop)
 
     return None
 
 def main():
     images = list(INPUT_DIR.rglob("*.JPG"))
-    with ProcessPoolExecutor(max_workers=4) as executor:
-        list(tqdm(
-            executor.map(make_inference_crop, images),
-            total=len(images)
-        ))
+    if PARALLEL:
+        with ProcessPoolExecutor(max_workers=8) as executor:
+            results = executor.map(make_inference_crop, images)
+
+            for result in tqdm(
+                results,
+                total=len(images),
+                desc="Processing images"
+            ):
+                if result is not None:
+                    print(result)
+
+    else:
+        for img_path in tqdm(
+            images,
+            total=len(images),
+            desc="Processing images"
+        ):
+            result = make_inference_crop(img_path)
+            if result is not None:
+                print(result)
 
 if __name__ == "__main__":
     main()
