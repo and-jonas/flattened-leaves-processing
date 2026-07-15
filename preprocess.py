@@ -80,7 +80,7 @@ def process_file(file_path: Path, output_dir: Path) -> tuple[Path, Path]:
 
 
 def process_directory(directory: Path) -> None:
-    jpeg_files = list(directory.glob("*.JPG"))[31:]
+    jpeg_files = list(directory.glob("*.JPG"))[870:]
     if not jpeg_files:
         return
 
