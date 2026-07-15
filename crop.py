@@ -52,7 +52,7 @@ def make_inference_crop(img_path):
     crop = img[y1:y2, x1:x2]
  
     rel = img_path.relative_to(INPUT_DIR)
-    out_path = OUTPUT_DIR / rel
+    out_path = OUTPUT_DIR / rel / "inference_crops"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     cv2.imwrite(str(out_path), crop)
