@@ -68,7 +68,6 @@ def make_unique_file(dst: Path) -> Path:
             return candidate
         counter += 1
 
-
 def process_file(file_path: Path, output_dir: Path) -> tuple[Path, Path]:
     qr_id = decode_barcode(file_path)
     date_stamp = extract_datetime_original(file_path)
