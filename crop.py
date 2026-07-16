@@ -1,4 +1,9 @@
 
+# ======================================================================================================================
+# Makes 2048 x 8192 px crops of leaf images for inference
+# ======================================================================================================================
+
+
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 import cv2
@@ -25,9 +30,8 @@ def make_inference_crop(img_path):
     # pre-crop to remove background
     img = img[1250:4750, :]
 
-    B, G, R = cv2.split(img.astype(np.float32))
-
     # get leaf mask
+    B, G, R = cv2.split(img.astype(np.float32))
     leaf_index = R + G - 2 * B
     mask = leaf_index > 20
 
@@ -52,8 +56,8 @@ def make_inference_crop(img_path):
 
     crop = img[y1:y2, x1:x2]
  
+    # export crop
     rel = img_path.relative_to(INPUT_DIR)
-    
     out_path = OUTPUT_DIR / rel.parent / "inference_crops" / (img_path.stem + ".png")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out_path), crop)
