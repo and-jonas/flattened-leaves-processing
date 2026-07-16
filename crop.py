@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt 
 
 INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
 OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40")
@@ -19,6 +20,9 @@ CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
 PARALLEL = True
 
+images = list(INPUT_DIR.rglob("*.JPG"))
+indices = [i for i, f in enumerate(images) if "102927" in Path(f).name]
+img_path = images[indices[1]]
 
 def make_inference_crop(img_path):
 
@@ -26,6 +30,10 @@ def make_inference_crop(img_path):
     img = cv2.imread(str(img_path))
     if img is None:
         return f"Could not read {img_path}"
+    
+    # check orientation and rotate if needed
+    if img.shape[0] > img.shape[1]:
+        img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
     
     # pre-crop to remove background
     img = img[1250:4750, :]

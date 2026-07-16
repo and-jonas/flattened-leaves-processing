@@ -16,6 +16,7 @@ downloaded = download_models_for_config()
 downloaded = download_models_for_config(config_name="canopy_landscape")
 downloaded = download_models_for_config(config_name="flattened_leaves")
 
+# test models (requires gpu)
 # models.test()
 
 # intialize predictor
