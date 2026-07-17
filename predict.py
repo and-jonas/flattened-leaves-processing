@@ -9,6 +9,12 @@ from leaf.visualization import FlattenedVisualizer, Path
 from leaf import get_model_urls_for_config, download_models_for_config, download_test_images
 import glob
 from pathlib import Path
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(processName)s | %(levelname)s | %(message)s'
+)
 
 # pre-download models and test image
 urls = get_model_urls_for_config(config_name='flattened_leaves', config_path='config')
