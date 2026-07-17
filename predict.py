@@ -6,17 +6,18 @@
 from leaf import models
 from leaf.inference import Predictor
 from leaf.visualization import FlattenedVisualizer, Path
-from leaf.model_registry import get_model_urls_for_config, download_models_for_config
+from leaf import get_model_urls_for_config, download_models_for_config, download_test_images
 import glob
 from pathlib import Path
 
-# pre-download models
+# pre-download models and test image
 urls = get_model_urls_for_config(config_name='flattened_leaves', config_path='config')
 downloaded = download_models_for_config()
 downloaded = download_models_for_config(config_name="canopy_landscape")
 downloaded = download_models_for_config(config_name="flattened_leaves")
+downloaded = download_test_images(root="test/images")
 
-# test models (requires gpu)
+# # test models (requires gpu)
 # models.test()
 
 # intialize predictor
