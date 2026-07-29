@@ -14,19 +14,20 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import threading
 # matplotlib.use('Qt5Agg')
 from qreader import QReader
 
-#instantiate QR reader
+# instantiate QR reader
 qreader = QReader()
+qreader_lock = threading.Lock()
 
 parent_dir = Path(
-    "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages/1510"
+    "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/CameraUnknown"
 )
 
-MAX_WIDTH = 3200
 WORKERS = min(8, (os.cpu_count() or 4))
-PARALLEL = True          # Set to False for sequential processing, True for parallel
+PARALLEL = True
 
 
 def extract_datetime_original(file_path: Path) -> str:
@@ -48,13 +49,16 @@ def decode_barcode(file_path: Path) -> str:
     img = cv2.imread(str(file_path), cv2.IMREAD_COLOR)
 
     if img is None:
-        return file_path.stem
+        raise RuntimeError(f"Could not read image: {file_path}")
 
-    # Create a QReader instance
-    decoded_text = qreader.detect_and_decode(image=img)
+    # QReader/Ultralytics is not thread-safe when called concurrently
+    with qreader_lock:
+        decoded_text = qreader.detect_and_decode(image=img)
+
     if decoded_text and decoded_text[0]:
-        return decoded_text[0]   
+        return decoded_text[0]
     return file_path.stem
+
 
 def make_unique_file(dst: Path) -> Path:
     if not dst.exists():
@@ -68,6 +72,7 @@ def make_unique_file(dst: Path) -> Path:
             return candidate
         counter += 1
 
+
 def process_file(file_path: Path, output_dir: Path) -> tuple[Path, Path]:
     qr_id = decode_barcode(file_path)
     date_stamp = extract_datetime_original(file_path)
@@ -79,7 +84,7 @@ def process_file(file_path: Path, output_dir: Path) -> tuple[Path, Path]:
 
 
 def process_directory(directory: Path) -> None:
-    jpeg_files = list(directory.glob("*.JPG"))[:32]
+    jpeg_files = list(directory.glob("*.JPG"))
     if not jpeg_files:
         return
 
@@ -88,21 +93,26 @@ def process_directory(directory: Path) -> None:
     renamed_dir.mkdir(exist_ok=True)
 
     results = []
-    
+
     if PARALLEL:
         # Parallel processing with thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as executor:
             futures = [executor.submit(process_file, p, renamed_dir) for p in jpeg_files]
-            
-            if tqdm is not None:
-                with tqdm(total=len(jpeg_files), desc=f"Processing {directory.name}", unit="file") as pbar:
+
+            try:
+                if tqdm is not None:
+                    with tqdm(total=len(jpeg_files), desc=f"Processing {directory.name}", unit="file") as pbar:
+                        for fut in concurrent.futures.as_completed(futures):
+                            res = fut.result()  # fail-fast on first worker exception
+                            results.append(res)
+                            pbar.update(1)
+                else:
                     for fut in concurrent.futures.as_completed(futures):
-                        res = fut.result()
-                        results.append(res)
-                        pbar.update(1)
-            else:
-                for fut in concurrent.futures.as_completed(futures):
-                    results.append(fut.result())
+                        results.append(fut.result())  # fail-fast on first worker exception
+            except Exception:
+                for f in futures:
+                    f.cancel()
+                raise
     else:
         # Sequential processing
         for file_path in tqdm(jpeg_files, desc=f"Processing {directory.name}", unit="file"):
@@ -126,4 +136,3 @@ if __name__ == "__main__":
     ]
     for jpeg_dir in jpeg_dirs:
         process_directory(jpeg_dir)
-

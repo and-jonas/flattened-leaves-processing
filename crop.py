@@ -1,8 +1,6 @@
-
 # ======================================================================================================================
 # Makes 2048 x 8192 px crops of leaf images for inference
 # ======================================================================================================================
-
 
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -12,19 +10,16 @@ from tqdm import tqdm
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt 
 
-INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
-OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40")
-# INPUT_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
-# OUTPUT_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40")
+# PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
+# PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/06_WW40/LeafImages")
+PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/02_CHWW001/LeafImages")
+PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/LeafImages")
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
 PARALLEL = True
 
-images = list(INPUT_DIR.rglob("*.JPG"))
-indices = [i for i, f in enumerate(images) if "102927" in Path(f).name]
-img_path = images[indices[1]]
-
-def make_inference_crop(img_path):
+def make_inference_crop(args):
+    img_path, input_dir, output_dir = args
 
     # get image
     img = cv2.imread(str(img_path))
@@ -65,34 +60,37 @@ def make_inference_crop(img_path):
     crop = img[y1:y2, x1:x2]
  
     # export crop
-    rel = img_path.relative_to(INPUT_DIR)
-    out_path = OUTPUT_DIR / rel.parent / "inference_crops" / (img_path.stem + ".png")
+    rel = img_path.relative_to(input_dir)
+    out_path = output_dir / rel.parent / "inference_crops" / (img_path.stem + ".png")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out_path), crop)
 
     return None
 
 def main():
-    images = list(INPUT_DIR.rglob("*.JPG"))
+    patterns = ("*.JPG", "*.jpg", "*.JPEG", "*.jpeg")
+    jpeg_dirs = [
+        d
+        for d in PARENT_INPUT_DIR.rglob("*")
+        if d.is_dir()
+        and any(next(d.glob(pat), None) is not None for pat in patterns)
+    ]
+
+    tasks = [
+        (img_path, d, PARENT_OUTPUT_DIR / d.relative_to(PARENT_INPUT_DIR))
+        for d in jpeg_dirs
+        for img_path in {p for pat in patterns for p in d.glob(pat)}
+    ]
+
     if PARALLEL:
         with ProcessPoolExecutor(max_workers=8) as executor:
-            results = executor.map(make_inference_crop, images)
-
-            for result in tqdm(
-                results,
-                total=len(images),
-                desc="Processing images"
-            ):
+            results = executor.map(make_inference_crop, tasks)
+            for result in tqdm(results, total=len(tasks), desc="Processing images"):
                 if result is not None:
                     print(result)
-
     else:
-        for img_path in tqdm(
-            images,
-            total=len(images),
-            desc="Processing images"
-        ):
-            result = make_inference_crop(img_path)
+        for args in tqdm(tasks, total=len(tasks), desc="Processing images"):
+            result = make_inference_crop(args)
             if result is not None:
                 print(result)
 
