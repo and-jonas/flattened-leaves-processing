@@ -388,6 +388,7 @@ if __name__ == "__main__":
     else:
         # enqueue jobs
         for img_path in image_files:
+            print(f"[Main] queueing {img_path.stem}")
             jobs.put({
                 "image_name": img_path.stem,
                 "image_path": str(img_path)
