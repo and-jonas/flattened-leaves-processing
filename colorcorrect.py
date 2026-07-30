@@ -309,10 +309,12 @@ if __name__ == "__main__":
     save_dir = DATA_DIR / "control"
 
     # Step 1: Detect ColorChecker in reference image
+    # this needs a roi guide to reliably find the color checker
+    # due to complex lighting and many black parts present in the image
     print("\n=== Step 1: Detect reference ColorChecker ===")
     ref_detector = ColorCheckerDetector(
         fraction=0.05,
-        roi=(4475, 1100, 1700, 1000),  # tune per your setup
+        roi=(4475, 1100, 1700, 1000),
         kernel_size=7,
         save_dir=save_dir
     )
@@ -322,46 +324,7 @@ if __name__ == "__main__":
         plot=True
     )
 
-    # Step 2: Detect ColorChecker in a sample input image
-    print("\n=== Step 2: Detect input ColorChecker ===")
-    input_detector = ColorCheckerDetector(
-        fraction=0.01,
-        roi=None,
-        kernel_size=7,
-        save_dir=save_dir
-    )
-    sample_image = sorted(input_dir.glob("*.JPG"))[0]
-    input_patches, _, _ = input_detector.detect(
-        sample_image,
-        patch_w=320, patch_h=270,
-        plot=True
-    )
-
-    # Step 3: Calibrate transform
-    print("\n=== Step 3: Calibrate color transform ===")
-    transform = ColorTransform()
-    transform.calibrate(input_patches, ref_patches)
-
-    # Step 4: Validate & visualize
-    print("\n=== Step 4: Validate ===")
-    transform.validate(input_patches, ref_patches)
-    
-    # Show before/after on sample
-    img = cv2.imread(str(sample_image))
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img_corr = transform.apply(img)
-
-    # fig, axes = plt.subplots(1, 2, figsize=(16, 8))
-    # axes[0].imshow(img)
-    # axes[0].set_title("Original")
-    # axes[0].axis("off")
-    # axes[1].imshow(img_corr)
-    # axes[1].set_title("Color corrected")
-    # axes[1].axis("off")
-    # plt.tight_layout()
-    # plt.show()
-
-    # Step 5: Batch process (detect per-image, calibrate to same reference, save control + corrected)
+    # Step 2: Batch process (detect per-image, calibrate to same reference, save control + corrected)
     print(f"\n=== Step 5: Batch correct images in {input_dir} ===")
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -370,16 +333,26 @@ if __name__ == "__main__":
 
     image_files = sorted(input_dir.glob("*.JPG")) + sorted(input_dir.glob("*.jpg"))
 
+    # instantiate detector
+    # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
+    input_detector = ColorCheckerDetector(
+        fraction=0.01,
+        roi=None,
+        kernel_size=7,
+        save_dir=save_dir
+    )
+
+    # iterate over all images
     for img_path in image_files:
         try:
-            # detect checker on this input image and export control image
+            # detect checker on the input image and export control image
             input_patches, coords, _ = input_detector.detect(
                 img_path,
                 patch_w=320, patch_h=270,
                 plot=True
             )
 
-            # calibrate transform using this image's patches -> reference patches (same target)
+            # calibrate transform using this image's patches -> reference patches (constant target)
             transform = ColorTransform()
             transform.calibrate(input_patches, ref_patches)
 
@@ -389,7 +362,7 @@ if __name__ == "__main__":
             img_corr = transform.apply(img)
             img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
 
-            out_path = output_dir / f"{img_path.stem}_corrected.JPG"
+            out_path = output_dir / f"{img_path.stem}.JPG"
             cv2.imwrite(str(out_path), img_corr_bgr)
             print(f"✓ {img_path.name} → {out_path.name}")
 
