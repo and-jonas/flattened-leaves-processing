@@ -5,7 +5,7 @@
 
 import concurrent.futures
 from pathlib import Path
-import shutil
+import shutil 
 import cv2
 import os
 import exifread
@@ -134,5 +134,5 @@ if __name__ == "__main__":
         if d.is_dir()
         and any(next(d.glob(pat), None) is not None for pat in patterns)
     ]
-    for jpeg_dir in jpeg_dirs:
+    for jpeg_dir in jpeg_dirs[-1:]:
         process_directory(jpeg_dir)
