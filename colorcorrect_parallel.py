@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import multiprocessing
 from multiprocessing import Manager, Process
+import os
 
 
 # ============================================================================
@@ -394,7 +395,9 @@ if __name__ == "__main__":
                 "image_path": str(img_path)
             })
 
-        n_workers = max(1, multiprocessing.cpu_count() - 1)
+        # n_workers = max(1, multiprocessing.cpu_count() - 1)
+        n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))
+        print(f"running on {input_dir} with {n_workers} workers ===")
         for _ in range(n_workers):
             p = Process(
                 target=_worker_process,
