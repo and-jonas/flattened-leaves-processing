@@ -11,28 +11,65 @@ import os
 # 1. UTILITY FUNCTIONS (existing + enhanced)
 # ============================================================================
 
-def get_dark_mask(img, fraction=0.005, roi=None):
-    """Find darkest pixels, optionally within ROI."""
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+def get_color_mask(img, color="red", fraction=0.005, roi=None):
+    """
+    Find the most distinctive pixels of a given color using a fraction-based
+    threshold.
+
+    Parameters
+    ----------
+    img : ndarray
+        RGB image.
+    color : str
+        Color to detect ("red" or "magenta").
+    fraction : float
+        Fraction of pixels to retain.
+    roi : tuple or None
+        Optional ROI as (x, y, w, h).
+
+    Returns
+    -------
+    mask : ndarray
+        Binary mask.
+    """
+
+    img = img.astype(float)
+
+    R = img[:, :, 0]
+    G = img[:, :, 1]
+    B = img[:, :, 2]
+
+    total = R + G + B + 1e-6
+
+    if color == "red":
+        # Strong red relative to green and blue
+        score = (R / total) * (R - (G + B) / 2)
+
+    elif color == "magenta":
+        # Strong red + blue, low green
+        score = ((R + B) / total) * ((R + B) / 2 - G)
+
+    else:
+        raise ValueError(f"Unknown color: {color}")
 
     if roi is None:
-        region = gray
-        roi_mask = np.ones(gray.shape, dtype=bool)
+        region = score
+        roi_mask = np.ones(score.shape, dtype=bool)
     else:
         x, y, w, h = roi
-        region = gray[y:y+h, x:x+w]
+        region = score[y:y+h, x:x+w]
 
-        roi_mask = np.zeros(gray.shape, dtype=bool)
+        roi_mask = np.zeros(score.shape, dtype=bool)
         roi_mask[y:y+h, x:x+w] = True
 
     n_pixels = region.size
-    n_dark = max(1, int(n_pixels * fraction))
+    n_selected = max(1, int(n_pixels * fraction))
 
-    threshold = np.partition(region.flatten(), n_dark)[n_dark]
-    mask = (gray <= threshold) & roi_mask
-    # plt.imshow(mask)
+    threshold = np.partition(region.flatten(), -n_selected)[-n_selected]
 
-    return mask
+    mask = (score >= threshold) & roi_mask
+
+    return mask.astype(np.uint8)
 
 def post_process_mask(mask, kernel_size=5):
     """Remove noise and fill holes in binary mask."""
@@ -68,14 +105,16 @@ def get_largest_connected_component(mask):
     return largest_component, (center_x, center_y)
 
 def generate_checker_grid_from_anchor(
-    img, 
-    x0, 
-    y0, 
-    patch_w, 
+    img,
+    x0,
+    y0,
+    patch_w,
     patch_h,
+    anchor_row,
+    anchor_col,
     margin=0.33
 ):
-    """Generate ColorChecker patches from bottom-right anchor."""
+    """Generate ColorChecker patches from arbitrary anchor patch."""
 
     h_img, w_img = img.shape[:2]
     patch_values = []
@@ -84,28 +123,25 @@ def generate_checker_grid_from_anchor(
     for row in range(4):
         for col in range(6):
 
-            # position relative to bottom-right patch
-            cx = x0 - (5 - col) * patch_w
-            cy = y0 - (3 - row) * patch_h
+            # position relative to anchor patch
+            cx = x0 + (col - anchor_col) * patch_w
+            cy = y0 + (row - anchor_row) * patch_h
 
-            # full patch boundaries
             x1 = int(cx - patch_w / 2)
             x2 = int(cx + patch_w / 2)
 
             y1 = int(cy - patch_h / 2)
             y2 = int(cy + patch_h / 2)
 
-            # clip to image boundaries
+            # clip
             x1c = max(0, x1)
             y1c = max(0, y1)
             x2c = min(w_img, x2)
             y2c = min(h_img, y2)
 
-            # skip if completely outside image
             if x1c >= x2c or y1c >= y2c:
                 continue
 
-            # central sampling region
             dx = int((x2c - x1c) * margin)
             dy = int((y2c - y1c) * margin)
 
@@ -115,14 +151,11 @@ def generate_checker_grid_from_anchor(
             sy2 = y2c - dy
 
             sampled = img[sy1:sy2, sx1:sx2]
-            patch_id = row * 6 + col
 
-            # Store RGB mean value
-            patch_values.append(sampled.mean(axis=(0, 1)))
+            patch_values.append(sampled.mean(axis=(0,1)))
 
-            # Store metadata for visualization
             patch_coords.append({
-                "id": patch_id,
+                "id": row * 6 + col,
                 "row": row,
                 "col": col,
                 "patch": (x1c, y1c, x2c, y2c),
@@ -186,12 +219,12 @@ class ColorCheckerDetector:
             raise FileNotFoundError(f"Cannot read {img_path}")
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        mask = get_dark_mask(img, fraction=self.fraction, roi=self.roi)
-        mask_proc = post_process_mask(mask, kernel_size=self.kernel_size)
-        largest_comp, anchor = get_largest_connected_component(mask_proc)
+        mask_red = get_color_mask(img, fraction=self.fraction, roi=self.roi)
+        mask_red_proc = post_process_mask(mask_red, kernel_size=self.kernel_size)
+        largest_comp_red, anchor = get_largest_connected_component(mask_red_proc)
 
         patches, coords = generate_checker_grid_from_anchor(
-            img, anchor[0], anchor[1], patch_w, patch_h
+            img, x0=anchor[0], y0=anchor[1], patch_w=patch_w, patch_h=patch_h, anchor_row=2, anchor_col=2
         )
 
         # default: save to DATA_DIR / "control" assuming structure
@@ -362,6 +395,22 @@ if __name__ == "__main__":
         plot=True
     )
 
+    # Step 2: Detect ColorChecker in input image
+    # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
+    print("\n=== Step 2: Detect input ColorChecker ===")
+    input_detector = ColorCheckerDetector(
+        fraction=0.001,
+        roi=None,
+        kernel_size=11,
+        save_dir=save_dir
+    )
+    sample_image = sorted(input_dir.glob("*.JPG"))[38]
+    input_patches, _, _ = input_detector.detect(
+        sample_image,
+        patch_w=315, patch_h=265,
+        plot=True
+    )
+
     # Step 5: Batch process (detect per-image, calibrate to same reference, save control + corrected)
     print(f"\n=== Step 5: Batch correct images in {input_dir} ===")
 
@@ -372,7 +421,7 @@ if __name__ == "__main__":
     image_files = sorted(input_dir.glob("*.JPG"))
 
     # instantiate detector parameters (workers will create their own detector instances)
-    fraction = 0.005
+    fraction = 0.001
     roi = None
     kernel_size = 11
     pw, ph = 320, 270
