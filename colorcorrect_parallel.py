@@ -319,7 +319,7 @@ class ColorCheckerDetector:
 
         patches, coords = generate_checker_grid_from_anchor(
             img, x0=anchor1[0], y0=anchor1[1], patch_w=patch_w, patch_h=patch_h, anchor_row=2, anchor_col=2,
-            angle=angle, margin=0.4
+            angle=angle, margin=0.375
         )
 
         # default: save to DATA_DIR / "control" assuming structure
