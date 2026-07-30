@@ -338,7 +338,8 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 if __name__ == "__main__":
     
     # Define paths
-    DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     ref_file = DATA_DIR / "ref" / "20240529_110337_ESWW0090152_5.JPG"
     input_dir = DATA_DIR / "CameraUnknown"
     output_dir = DATA_DIR / "corrected"
@@ -356,7 +357,7 @@ if __name__ == "__main__":
     )
     ref_patches, _, _ = ref_detector.detect(
         ref_file,
-        patch_w=280, patch_h=240,
+        patch_w=270, patch_h=235,
         plot=True
     )
 
@@ -367,12 +368,12 @@ if __name__ == "__main__":
     control_dir = save_dir if save_dir else output_dir.parent / "control"
     control_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(input_dir.glob("*.JPG")) + sorted(input_dir.glob("*.jpg"))
+    image_files = sorted(input_dir.glob("*.JPG"))
 
     # instantiate detector parameters (workers will create their own detector instances)
-    fraction = 0.01
+    fraction = 0.005
     roi = None
-    kernel_size = 7
+    kernel_size = 11
     pw, ph = 320, 270
 
     # Build job/result queues and spawn workers

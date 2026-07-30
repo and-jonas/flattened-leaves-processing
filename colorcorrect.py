@@ -2,6 +2,8 @@ from pathlib import Path
 import cv2
 from matplotlib import pyplot as plt
 import numpy as np
+from skimage.morphology import reconstruction, erosion, disk
+
 
 
 # ============================================================================
@@ -27,7 +29,7 @@ def get_dark_mask(img, fraction=0.005, roi=None):
 
     threshold = np.partition(region.flatten(), n_dark)[n_dark]
     mask = (gray <= threshold) & roi_mask
-    # plt.imshow(mask)
+    plt.imshow(mask)
 
     return mask
 
@@ -48,6 +50,46 @@ def post_process_mask(mask, kernel_size=5):
         iterations=2
     )
     return mask_clean
+
+def post_process_mask2(mask, kernel_size=4):
+    """
+    Remove thin line-like structures while preserving larger compact objects.
+
+    Parameters
+    ----------
+    mask : ndarray
+        Binary mask (0/1 or 0/255).
+    kernel_size : int
+        Size of the structuring element. Choose this larger than half the
+        width of the unwanted lines, but smaller than half the thickness of
+        the rectangle.
+
+    Returns
+    -------
+    ndarray
+        Binary uint8 mask (0/1).
+    """
+    # Ensure binary
+    mask = (mask > 0).astype(np.uint8)
+
+    # Erode to remove thin structures
+    seed = erosion(mask, disk(kernel_size))
+
+    # Regrow only surviving regions
+    mask = reconstruction(seed, mask, method="dilation")
+
+    # Fill tiny holes
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (2 * kernel_size + 1, 2 * kernel_size + 1)
+    )
+    mask = cv2.morphologyEx(
+        mask.astype(np.uint8),
+        cv2.MORPH_CLOSE,
+        kernel,
+        iterations=1,
+    )
+
+    return mask.astype(np.uint8)
 
 def get_largest_connected_component(mask):
     """Extract largest connected region and its centroid."""
@@ -146,11 +188,11 @@ def plot_checker_grid(img, patch_coords, save_path=None):
         cv2.putText(img_vis, f'{p["row"]},{p["col"]}',
                     (x1+3, y1+15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
 
-        # plt.figure(figsize=(10, 8))
-        # plt.imshow(img_vis)
-        # plt.axis("off")
-        # plt.tight_layout()
-        # plt.show()
+    plt.figure(figsize=(10, 8))
+    plt.imshow(img_vis)
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
 
     if save_path is not None:
         cv2.imwrite(str(save_path), cv2.cvtColor(img_vis, cv2.COLOR_RGB2BGR))
@@ -185,6 +227,7 @@ class ColorCheckerDetector:
 
         mask = get_dark_mask(img, fraction=self.fraction, roi=self.roi)
         mask_proc = post_process_mask(mask, kernel_size=self.kernel_size)
+        # mask_proc = post_process_mask2(mask, kernel_size=self.kernel_size)
         largest_comp, anchor = get_largest_connected_component(mask_proc)
 
         patches, coords = generate_checker_grid_from_anchor(
@@ -324,8 +367,24 @@ if __name__ == "__main__":
         plot=True
     )
 
-    # Step 2: Batch process (detect per-image, calibrate to same reference, save control + corrected)
-    print(f"\n=== Step 5: Batch correct images in {input_dir} ===")
+    # Step 2: Detect ColorChecker in input image
+    # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
+    print("\n=== Step 2: Detect input ColorChecker ===")
+    input_detector = ColorCheckerDetector(
+        fraction=0.005,
+        roi=None,
+        kernel_size=11,
+        save_dir=save_dir
+    )
+    sample_image = sorted(input_dir.glob("*.JPG"))[7]
+    input_patches, _, _ = input_detector.detect(
+        sample_image,
+        patch_w=320, patch_h=270,
+        plot=True
+    )
+
+    # Step 3: Batch process (detect per-image, calibrate to same reference, save control + corrected)
+    print(f"\n=== Step 3: Batch correct images in {input_dir} ===")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     control_dir = save_dir if save_dir else output_dir.parent / "control"
@@ -336,9 +395,9 @@ if __name__ == "__main__":
     # instantiate detector
     # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
     input_detector = ColorCheckerDetector(
-        fraction=0.01,
+        fraction=0.005,
         roi=None,
-        kernel_size=7,
+        kernel_size=35,
         save_dir=save_dir
     )
 
