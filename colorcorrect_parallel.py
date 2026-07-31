@@ -425,16 +425,19 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 
 if __name__ == "__main__":
     
-    # Define paths
-    DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    DEST_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # Define paths: local
+    # DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # DEST_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # output_dir = DEST_DIR / "corrected"
+    # save_dir = DEST_DIR / "control"
 
+    # Define paths: SLURM
     # DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
+    DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
     ref_file = DATA_DIR / "ref" / "20240619_092442_ESWW0090037_2.JPG"
     input_dir = DATA_DIR / "renamed"
-    output_dir = DEST_DIR / "corrected"
-    save_dir = DEST_DIR / "control"
+    output_dir = DATA_DIR / "corrected"
+    save_dir = DATA_DIR / "control"
 
     # Step 1: Detect ColorChecker in reference image
     # this needs a roi guide to reliably find the color checker
@@ -475,7 +478,7 @@ if __name__ == "__main__":
     control_dir = save_dir if save_dir else output_dir.parent / "control"
     control_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(input_dir.glob("*.JPG"))[:3]
+    image_files = sorted(input_dir.glob("*.JPG"))
 
     # instantiate detector parameters (workers will create their own detector instances)
     fraction = 0.001
