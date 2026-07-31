@@ -43,7 +43,8 @@ def get_color_mask(img, color="red", fraction=0.005, roi=None):
 
     if color == "red":
         # Strong red relative to green and blue
-        score = (R / total) * (R - (G + B) / 2)
+        # score = (R / total) * (R - (G + B) / 2)
+        score = (R / total) - (G / total + B / total) / 2
 
     elif color == "magenta":
         # Strong red + blue, low green
@@ -184,67 +185,6 @@ def generate_checker_grid_from_anchor(
 
     return np.asarray(patch_values, dtype=np.float64), patch_coords
 
-
-# def generate_checker_grid_from_anchor(
-#     img,
-#     x0,
-#     y0,
-#     patch_w,
-#     patch_h,
-#     anchor_row,
-#     anchor_col,
-#     margin=0.33
-# ):
-#     """Generate ColorChecker patches from arbitrary anchor patch."""
-
-#     h_img, w_img = img.shape[:2]
-#     patch_values = []
-#     patch_coords = []
-
-#     for row in range(4):
-#         for col in range(6):
-
-#             # position relative to anchor patch
-#             cx = x0 + (col - anchor_col) * patch_w
-#             cy = y0 + (row - anchor_row) * patch_h
-
-#             x1 = int(cx - patch_w / 2)
-#             x2 = int(cx + patch_w / 2)
-
-#             y1 = int(cy - patch_h / 2)
-#             y2 = int(cy + patch_h / 2)
-
-#             # clip
-#             x1c = max(0, x1)
-#             y1c = max(0, y1)
-#             x2c = min(w_img, x2)
-#             y2c = min(h_img, y2)
-
-#             if x1c >= x2c or y1c >= y2c:
-#                 continue
-
-#             dx = int((x2c - x1c) * margin)
-#             dy = int((y2c - y1c) * margin)
-
-#             sx1 = x1c + dx
-#             sx2 = x2c - dx
-#             sy1 = y1c + dy
-#             sy2 = y2c - dy
-
-#             sampled = img[sy1:sy2, sx1:sx2]
-
-#             patch_values.append(sampled.mean(axis=(0,1)))
-
-#             patch_coords.append({
-#                 "id": row * 6 + col,
-#                 "row": row,
-#                 "col": col,
-#                 "patch": (x1c, y1c, x2c, y2c),
-#                 "sample": (sx1, sy1, sx2, sy2)
-#             })
-
-#     return np.array(patch_values, dtype=np.float64), patch_coords
-
 def plot_checker_grid(img, patch_coords, save_path=None):
 
     img_vis = img.copy()
@@ -311,6 +251,25 @@ class ColorCheckerDetector:
         largest_comp_mag, anchor2 = get_largest_connected_component(mask_mag_proc)
 
         combined_mask = largest_comp_mag | largest_comp_red
+
+        # fig, axes = plt.subplots(
+        #     1, 2,
+        #     figsize=(12, 6),
+        #     sharex=True,
+        #     sharey=True
+        # )
+
+        # axes[0].imshow(mask_mag)
+        # axes[0].set_title("Image 1")
+
+        # axes[1].imshow(img)
+        # axes[1].set_title("Image 2")
+
+        # for ax in axes:
+        #     ax.axis("off")
+
+        # plt.tight_layout()
+        # plt.show()
 
         dx = anchor2[0] - anchor1[0]
         dy = anchor2[1] - anchor1[1]

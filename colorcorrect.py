@@ -311,34 +311,6 @@ class ColorTransform:
         print(f"  Max error per channel:  {error.max(axis=0)}")
 
 # ============================================================================
-# 4. BATCH PROCESSING
-# ============================================================================
-
-def batch_correct_images(image_dir, transform, output_dir=None, suffix="_corrected"):
-    """Apply color correction to all images in a directory."""
-    image_dir = Path(image_dir)
-    output_dir = Path(output_dir) if output_dir else image_dir / "corrected"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    image_files = sorted(image_dir.glob("*.JPG")) + sorted(image_dir.glob("*.jpg"))
-
-    for img_path in image_files:
-        try:
-            img = cv2.imread(str(img_path))
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img_corr = transform.apply(img)
-            img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
-
-            out_path = output_dir / f"{img_path.stem}{suffix}.JPG"
-            cv2.imwrite(str(out_path), img_corr_bgr)
-            print(f"✓ {img_path.name} → {out_path.name}")
-        except Exception as e:
-            print(f"✗ {img_path.name}: {e}")
-
-    return output_dir
-
-
-# ============================================================================
 # 5. MAIN WORKFLOW (example usage)
 # ============================================================================
 
