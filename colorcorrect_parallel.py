@@ -285,7 +285,7 @@ class ColorCheckerDetector:
         # default: save to DATA_DIR / "control" assuming structure
         control_dir = self.save_dir if self.save_dir else img_path.parent.parent / "control"
         control_dir.mkdir(parents=True, exist_ok=True)
-        save_path = control_dir / f"{img_path.stem}.JPG"
+        save_path = control_dir / f"{img_path.stem}.png"
 
         if plot:
             plot_checker_grid(img, coords, save_path=save_path)
@@ -368,7 +368,7 @@ def batch_correct_images(image_dir, transform, output_dir=None, suffix="_correct
     output_dir = Path(output_dir) if output_dir else image_dir / "corrected"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(image_dir.glob("*.JPG")) + sorted(image_dir.glob("*.jpg"))
+    image_files = sorted(image_dir.glob("*.JPG"))
 
     for img_path in image_files:
         try:
@@ -427,12 +427,14 @@ if __name__ == "__main__":
     
     # Define paths
     DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    DEST_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+
     # DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     # DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
     ref_file = DATA_DIR / "ref" / "20240619_092442_ESWW0090037_2.JPG"
     input_dir = DATA_DIR / "renamed"
-    output_dir = DATA_DIR / "corrected"
-    save_dir = DATA_DIR / "control"
+    output_dir = DEST_DIR / "corrected"
+    save_dir = DEST_DIR / "control"
 
     # Step 1: Detect ColorChecker in reference image
     # this needs a roi guide to reliably find the color checker
@@ -454,7 +456,7 @@ if __name__ == "__main__":
     # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
     print("\n=== Step 2: Detect input ColorChecker ===")
     input_detector = ColorCheckerDetector(
-        fraction=0.0004,
+        fraction=0.0005,
         roi=None,
         kernel_size=11,
         save_dir=save_dir
@@ -541,6 +543,6 @@ if __name__ == "__main__":
             p.join()
 
         rmse_df = pd.DataFrame(rmse_log, columns=["image", "rmse"])
-        rmse_df.to_csv(output_dir / "rmse.csv", index=False)
+        rmse_df.to_csv(save_dir / "rmse.csv", index=False)
 
     print(f"✓ Done. Output: {output_dir}")
