@@ -376,7 +376,7 @@ def batch_correct_images(image_dir, transform, output_dir=None, suffix="_correct
             img_corr = transform.apply(img)
             img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
 
-            out_path = output_dir / f"{img_path.stem}{suffix}.JPG"
+            out_path = output_dir / f"{img_path.stem}{suffix}.png"
             cv2.imwrite(str(out_path), img_corr_bgr)
             print(f"✓ {img_path.name} → {out_path.name}")
         except Exception as e:
@@ -428,7 +428,7 @@ if __name__ == "__main__":
     # Define paths
     # DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    ref_file = DATA_DIR / "ref" / "20240529_110337_ESWW0090152_5.JPG"
+    ref_file = DATA_DIR / "ref" / "20240619_092442_ESWW0090037_2.JPG"
     input_dir = DATA_DIR / "CameraUnknown"
     output_dir = DATA_DIR / "corrected"
     save_dir = DATA_DIR / "control"
