@@ -1,21 +1,4 @@
 
-from pathlib import Path
-import colorcorrect_parallel as ccp
-import numpy as np
-from tqdm import tqdm
-
-
-# Define paths
-DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/train_img_ESWW009")
-# DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/train_img_ESWW009")
-output_dir = DATA_DIR / "corrected"
-save_dir = DATA_DIR / "control"
-
-image_files = sorted(DATA_DIR.glob("*.JPG"))
-# exclude_file = DATA_DIR / "exclude_imgs.txt"
-# exclude_paths = [Path(line.strip()) for line in exclude_file.read_text().splitlines() if line.strip()]
-
-image_files = [img for img in image_files if "64_4" in img.name]
 
 from pathlib import Path
 import colorcorrect_parallel as ccp
@@ -25,13 +8,19 @@ from concurrent.futures import ProcessPoolExecutor
 
 
 # Define paths
-DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/train_img_ESWW009")
+DATA_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/train_img_ESWW009")
 output_dir = DATA_DIR / "corrected"
 save_dir = DATA_DIR / "control"
 
 image_files = sorted(DATA_DIR.glob("*.JPG"))
-image_files = [img for img in image_files if "64_4" in img.name]
-
+txt_file = DATA_DIR / "exclude_img.txt"
+exclude_paths = [
+    Path(line.strip().strip('"'))
+    for line in txt_file.read_text().splitlines()
+    if line.strip()
+]
+image_files_ref = [p for p in image_files if p not in exclude_paths]
+# len(image_files_ref)  # OK
 
 def _process_image(arg):
     """Worker function run in a separate process.
@@ -43,7 +32,7 @@ def _process_image(arg):
     save_dir = Path(save_dir_str)
 
     detector = ccp.ColorCheckerDetector(
-        fraction=0.006,
+        fraction=0.0085,
         roi=(4000, 900, 2400, 1600),
         kernel_size=7,
         save_dir=save_dir,
@@ -64,7 +53,7 @@ def main():
     all_patch_vectors = []
     image_names = []
 
-    args = [(str(p), str(save_dir)) for p in image_files]
+    args = [(str(p), str(save_dir)) for p in image_files_ref]
 
     # Use a process pool so heavy numpy/OpenCV work runs in parallel without GIL limits.
     with ProcessPoolExecutor() as ex:
