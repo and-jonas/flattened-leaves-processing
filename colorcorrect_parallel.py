@@ -5,6 +5,7 @@ import numpy as np
 import multiprocessing
 from multiprocessing import Manager, Process
 import os
+import pandas as pd
 
 
 # ============================================================================
@@ -44,7 +45,7 @@ def get_color_mask(img, color="red", fraction=0.005, roi=None):
     if color == "red":
         # Strong red relative to green and blue
         # score = (R / total) * (R - (G + B) / 2)
-        score = (R / total) - (G / total + B / total) / 2
+        score = (R / total) - (G / total + B / total) / 2  # higher specificity (separates from orange patch)
 
     elif color == "magenta":
         # Strong red + blue, low green
@@ -413,8 +414,7 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 
                 out_path = output_dir / f"{img_path.stem}.JPG"
                 cv2.imwrite(str(out_path), img_corr_bgr)
-
-                results.put((img_name, True, ""))
+                results.put((img_name, True, transform.rmse))
             except Exception as e:
                 results.put((img_name, False, str(e)))
 
@@ -426,9 +426,9 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 if __name__ == "__main__":
     
     # Define paths
-    # DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     # DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
+    # DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
     ref_file = DATA_DIR / "ref" / "20240619_092442_ESWW0090037_2.JPG"
     input_dir = DATA_DIR / "renamed"
     output_dir = DATA_DIR / "corrected"
@@ -473,7 +473,7 @@ if __name__ == "__main__":
     control_dir = save_dir if save_dir else output_dir.parent / "control"
     control_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(input_dir.glob("*.JPG"))
+    image_files = sorted(input_dir.glob("*.JPG"))[:3]
 
     # instantiate detector parameters (workers will create their own detector instances)
     fraction = 0.001
@@ -524,16 +524,23 @@ if __name__ == "__main__":
             jobs.put("STOP")
 
         # collect results
+        rmse_log = []
+
         count = 0
         while count < max_jobs:
-            name, ok, msg = results.get()
+            name, ok, info = results.get()
             count += 1
             if ok:
-                print(f"✓ {name} ({count}/{max_jobs})")
+                rmse = info
+                rmse_log.append((name, rmse))
+                print(f"✓ {name} ({count}/{max_jobs})  RMSE={rmse:.2f}")
             else:
-                print(f"✗ {name}: {msg} ({count}/{max_jobs})")
+                print(f"✗ {name}: {info} ({count}/{max_jobs})")
 
         for p in processes:
             p.join()
+
+        rmse_df = pd.DataFrame(rmse_log, columns=["image", "rmse"])
+        rmse_df.to_csv(output_dir / "rmse.csv", index=False)
 
     print(f"✓ Done. Output: {output_dir}")
