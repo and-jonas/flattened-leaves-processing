@@ -427,9 +427,10 @@ if __name__ == "__main__":
     
     # Define paths
     # DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
     ref_file = DATA_DIR / "ref" / "20240619_092442_ESWW0090037_2.JPG"
-    input_dir = DATA_DIR / "CameraUnknown"
+    input_dir = DATA_DIR / "renamed"
     output_dir = DATA_DIR / "corrected"
     save_dir = DATA_DIR / "control"
 
