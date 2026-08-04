@@ -285,7 +285,7 @@ class ColorCheckerDetector:
         # default: save to DATA_DIR / "control" assuming structure
         control_dir = self.save_dir if self.save_dir else img_path.parent.parent / "control"
         control_dir.mkdir(parents=True, exist_ok=True)
-        save_path = control_dir / f"{img_path.stem}.png"
+        save_path = control_dir / f"{img_path.stem}.JPG"
 
         if plot:
             plot_checker_grid(img, coords, save_path=save_path)
