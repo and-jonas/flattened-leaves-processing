@@ -412,7 +412,7 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
                 img_corr = transform.apply(img)
                 img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
 
-                out_path = output_dir / f"{img_path.stem}.JPG"
+                out_path = output_dir / f"{img_path.stem}.png"
                 cv2.imwrite(str(out_path), img_corr_bgr)
                 results.put((img_name, True, transform.rmse))
             except Exception as e:
