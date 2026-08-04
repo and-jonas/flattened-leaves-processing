@@ -12,8 +12,10 @@ import matplotlib.pyplot as plt
 
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/06_WW40/LeafImages")
-PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/02_CHWW001/LeafImages")
-PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/LeafImages")
+# PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/02_CHWW001/LeafImages")
+# PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/LeafImages")
+PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/corrected")
+PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
 PARALLEL = True
@@ -30,7 +32,7 @@ def make_inference_crop(args):
     if img.shape[0] > img.shape[1]:
         img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
     
-    # pre-crop to remove background
+    # pre-crop to remove backgrounde
     img = img[1250:4750, :]
 
     # get leaf mask
@@ -68,13 +70,21 @@ def make_inference_crop(args):
     return None
 
 def main():
-    patterns = ("*.JPG", "*.jpg", "*.JPEG", "*.jpeg")
-    jpeg_dirs = [
+    patterns = ("*.JPG", "*.jpg", "*.JPEG", "*.jpeg", "*.png", "*.PNG")
+    # collect directories that contain jpeg images
+    jpeg_dirs = []
+
+    # include the parent input dir itself if it contains images
+    if any(next(PARENT_INPUT_DIR.glob(pat), None) is not None for pat in patterns):
+        jpeg_dirs.append(PARENT_INPUT_DIR)
+
+    # include any subdirectories that contain images
+    jpeg_dirs.extend(
         d
         for d in PARENT_INPUT_DIR.rglob("*")
         if d.is_dir()
         and any(next(d.glob(pat), None) is not None for pat in patterns)
-    ]
+    )
 
     tasks = [
         (img_path, d, PARENT_OUTPUT_DIR / d.relative_to(PARENT_INPUT_DIR))
