@@ -9,13 +9,23 @@ import numpy as np
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt 
+import os
 
+# directories (local)
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/06_WW40/LeafImages")
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/02_CHWW001/LeafImages")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/LeafImages")
-PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/corrected")
-PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
+# PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/corrected")
+# PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
+# PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/colorcorrected/corrected")
+# PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/inference_crops")
+
+# directories (server)
+BASE_DIR = Path(os.environ["SCRATCH"])
+PARENT_INPUT_DIR = BASE_DIR / "colorcorrected/corrected"
+PARENT_OUTPUT_DIR = BASE_DIR / "inference_crops"
+
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
 PARALLEL = True
@@ -63,7 +73,7 @@ def make_inference_crop(args):
  
     # export crop
     rel = img_path.relative_to(input_dir)
-    out_path = output_dir / rel.parent / "inference_crops" / (img_path.stem + ".png")
+    out_path = output_dir / rel.parent / (img_path.stem + ".png")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out_path), crop)
 
