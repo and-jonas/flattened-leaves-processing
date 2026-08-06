@@ -1,7 +1,8 @@
 
 
+import importlib
 from pathlib import Path
-import colorcorrect_parallel as ccp
+cc = importlib.import_module("02_colorcorrect")
 import numpy as np
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor
@@ -31,7 +32,7 @@ def _process_image(arg):
     img_path = Path(img_path_str)
     save_dir = Path(save_dir_str)
 
-    detector = ccp.ColorCheckerDetector(
+    detector = cc.ColorCheckerDetector(
         fraction=0.0085,
         roi=(4000, 900, 2400, 1600),
         kernel_size=7,

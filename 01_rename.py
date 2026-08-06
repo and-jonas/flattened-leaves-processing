@@ -25,7 +25,6 @@ qreader_lock = threading.Lock()
 parent_dir = Path(
     "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/CameraUnknown"
 )
-
 WORKERS = min(8, (os.cpu_count() or 4))
 PARALLEL = True
 
@@ -88,10 +87,14 @@ def process_directory(directory: Path) -> None:
     if not jpeg_files:
         return
 
-    # Create renamed sub-directory
-    renamed_dir = directory / "renamed"
-    renamed_dir.mkdir(exist_ok=True)
-
+    # Create output directory
+    parts = list(directory.parts)
+    parts[parts.index("B_Data")] = "E_Work"
+    parts.remove("CameraUnknown")
+    parts[-2], parts[-1] = parts[-2], parts[-1]
+    parts.insert(-1, "renamed")
+    renamed_dir = Path(*parts)
+    renamed_dir.mkdir(exist_ok=True, parents=True)
     results = []
 
     if PARALLEL:
@@ -134,5 +137,5 @@ if __name__ == "__main__":
         if d.is_dir()
         and any(next(d.glob(pat), None) is not None for pat in patterns)
     ]
-    for jpeg_dir in jpeg_dirs[-1:]:
+    for jpeg_dir in jpeg_dirs[-2:-1]:
         process_directory(jpeg_dir)

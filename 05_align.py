@@ -8,6 +8,7 @@ from natsort import natsorted
 import cv2
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+from multiprocessing import Manager, Process
 
 def _uid_from_path(p: str) -> str:
     parts = os.path.splitext(os.path.basename(p))[0].split("_")
@@ -71,7 +72,6 @@ def read_image(path: str, mode: str = "rgb", downscale: bool = False) -> np.ndar
 
     raise ValueError(f"Unknown mode: {mode}")
 
-
 def warp_to_reference(src, M, ref_shape, is_mask=False):
     """Warp `src` (image or mask) into the coordinate system defined by `ref_shape` using affine `M`.
 
@@ -94,12 +94,26 @@ def warp_to_reference(src, M, ref_shape, is_mask=False):
         warped = warped.astype(src_dtype)
     return warped
 
-def get_leaf_mask(mask):
+def get_leaf_mask(mask, min_area=120000):
     """
-    Get a binary mask of the leaf from the segmentation mask.
-    Assumes that the leaf is labeled with 1 in the mask.
+    Get a cleaned binary leaf mask from a multiclass segmentation mask.
     """
-    return (mask > 0).astype(np.uint8)
+
+    leaf = (mask > 0).astype(np.uint8)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+        leaf,
+        connectivity=8
+    )
+
+    cleaned = np.zeros_like(leaf)
+
+    for label in range(1, num_labels):  # skip background
+        area = stats[label, cv2.CC_STAT_AREA]
+        if area >= min_area:
+            cleaned[labels == label] = 1
+
+    return cleaned
 
 def get_stitch_geometry(img1, img2, M):
     """Compute stitch canvas geometry for two images and affine transform.
@@ -133,13 +147,6 @@ def get_stitch_geometry(img1, img2, M):
 def stitch_image(img1, img2, M_shifted, canvas_size, x0, y0, x_seam=None, is_mask=False):
     """
     Stitch two images using a predefined affine transform.
-
-    is_mask=True:
-        - nearest interpolation
-        - preserve class labels
-
-    is_mask=False:
-        - linear interpolation
     """
 
     h1, w1 = img1.shape[:2]
@@ -193,15 +200,59 @@ def stitch_image(img1, img2, M_shifted, canvas_size, x0, y0, x_seam=None, is_mas
 
 
 def upscale_affine(M: np.ndarray, scale: float) -> np.ndarray:
-    """Undo a coordinate scale applied during feature detection.
-
-    The original script detected features on half-sized images and then
-    adjusted the translation components. This helper centralises that logic.
-    """
+    """Undo a coordinate scale applied during feature detection."""
     M_full = M.copy()
     M_full[0, 2] /= scale
     M_full[1, 2] /= scale
     return M_full
+
+
+def plot_inlier_matches(img1, img2, kp1, kp2, matches, inliers_mask, scale=0.5, savepath: Optional[str] = None):
+    """Plot matched keypoints and highlight inliers.
+
+    - `img1`, `img2` are full-size RGB images as returned by `read_image`.
+    - `kp1`, `kp2` are keypoint lists detected on scaled images (scale factor `scale`).
+    - `matches` is a list of `cv2.DMatch` between the scaled-image keypoints.
+    - `inliers_mask` is an array-like mask (len == len(matches)) marking inliers (truthy).
+    - `savepath` optional path to save the figure; when None the plot is shown.
+    """
+    # create small (detection-size) copies to match keypoint coordinates
+    img1_small = cv2.resize(img1, (0, 0), fx=scale, fy=scale)
+    img2_small = cv2.resize(img2, (0, 0), fx=scale, fy=scale)
+
+    # Build a mask consumable by cv2.drawMatches: list of 0/1
+    mask = None
+    try:
+        mask = [int(bool(m)) for m in np.asarray(inliers_mask).ravel().tolist()]
+    except Exception:
+        mask = None
+
+    # drawMatches expects BGR order but we keep RGB everywhere and display with matplotlib
+    try:
+        drawn = cv2.drawMatches(
+            img1_small,
+            kp1,
+            img2_small,
+            kp2,
+            matches,
+            None,
+            matchColor=(0, 255, 0),
+            singlePointColor=(255, 0, 0),
+            matchesMask=mask,
+        )
+    except Exception:
+        # fallback: draw all matches if mask fails
+        drawn = cv2.drawMatches(img1_small, kp1, img2_small, kp2, matches, None)
+
+    plt.figure(figsize=(12, 6))
+    plt.imshow(drawn)
+    plt.axis("off")
+    if savepath is not None:
+        os.makedirs(os.path.dirname(savepath), exist_ok=True)
+        plt.savefig(savepath, bbox_inches="tight")
+        plt.close()
+    else:
+        plt.show()
 
 
 # directories
@@ -212,50 +263,35 @@ dir_msk = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg
 out_images_dir = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed/aligned/images"
 out_masks_dir = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed/aligned/masks"
 
-# collect all series for images and masks
-all_series_img = get_series(path_images=os.path.join(dir_img))
-all_series_msk = get_series(path_images=os.path.join(dir_msk))
+def process_series(series_img, series_msk, out_images_dir, out_masks_dir):
+    """Process a single leaf series: detect features, match, stitch and save outputs.
 
-# # TEMPORARY: keep only series that contain a file matching the pattern "CH13063920260603.png" (case-insensitive)
-# PATTERN = "CH13063920260603"
-# all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
-# all_series_msk = [s for s in all_series_msk if any(PATTERN in os.path.basename(p) for p in s)]
-
-# build mask lookup by uid
-mask_lookup = { _uid_from_path(s[0]): s for s in all_series_msk if s }
-
-for series_img in all_series_img:
+    `series_img` and `series_msk` are lists of file paths (strings).
+    """
     if not series_img:
-        continue
+        return {"uid": None, "status": "empty"}
+
     uid = _uid_from_path(series_img[0])
-    series_msk = mask_lookup.get(uid)
     if not series_msk:
-        # no corresponding masks for this uid
-        continue
+        return {"uid": uid, "status": "no_masks"}
 
     # load images and masks for this uid
     img = [read_image(p, mode="rgb") for p in series_img]
     msk = [read_image(p, mode="mask") for p in series_msk]
     leaf_masks = [get_leaf_mask(m) for m in msk]
 
-    # -----------------------------------
     # Compute SIFT features
-    # -----------------------------------
     sift = cv2.SIFT_create(nfeatures=1500)
-
     features: List[Dict[str, Any]] = []
-    for image, leaf_mask in tqdm(zip(img, leaf_masks), total=min(len(img), len(leaf_masks)), desc=f"SIFT {uid}"):
+    for image, leaf_mask in zip(img, leaf_masks):
         image_small = cv2.resize(image, (0, 0), fx=0.5, fy=0.5)
         mask_small = cv2.resize(leaf_mask, (0, 0), fx=0.5, fy=0.5)
         kp, des = sift.detectAndCompute(image_small, (mask_small.astype(np.uint8) * 255))
         features.append({"kp": kp, "des": des})
 
-    # -----------------------------------
     # Matcher
-    # -----------------------------------
     bf = cv2.BFMatcher(cv2.NORM_L2)
     results: List[Dict[str, Any]] = []
-
     for i in range(len(features) - 1):
         des1 = features[i]["des"]
         des2 = features[i + 1]["des"]
@@ -263,8 +299,8 @@ for series_img in all_series_img:
             continue
         matches = bf.knnMatch(des1, des2, k=2)
         # Lowe ratio test
-        good = [m for m, n in matches if m.distance < 0.75 * n.distance]
-        if len(good) < 10:
+        good = [m for m, n in matches if m.distance < 0.70 * n.distance]
+        if len(good) < 35:
             continue
         pts1 = np.float32([features[i]["kp"][m.queryIdx].pt for m in good])
         pts2 = np.float32([features[i + 1]["kp"][m.trainIdx].pt for m in good])
@@ -280,19 +316,29 @@ for series_img in all_series_img:
             "inliers": n_inliers,
             "ratio": inlier_ratio,
             "transform": M_full,
+            "good": good,
+            "inliers_mask": inliers.ravel().astype(np.uint8),
         })
 
-    # -----------------------------
     # Warp & merge masks for result pairs
-    # -----------------------------
-    merged_masks = []
-    warped_images = []
-
+    saved = 0
     for r in results:
         if r["inliers"] < 30:
             continue
         M = r.get("transform")
         i, j = r["pair"]
+
+        # visualize and save match/inliers image (scaled to detector size)
+        try:
+            os.makedirs(out_images_dir, exist_ok=True)
+            base1 = os.path.splitext(os.path.basename(series_img[i]))[0]
+            base2 = os.path.splitext(os.path.basename(series_img[j]))[0]
+            matches_fname = f"{base1}-{base2}_matches.png"
+            matches_path = os.path.join(out_images_dir, matches_fname)
+            plot_inlier_matches(img[i], img[j], features[i]["kp"], features[j]["kp"], r.get("good", []), r.get("inliers_mask", []), scale=0.5, savepath=matches_path)
+        except Exception:
+            pass
+
         M_shifted, canvas_size, x0, y0 = get_stitch_geometry(img[i], img[j], M)
         img_stitched, x_seam = stitch_image(img[i], img[j], M_shifted, canvas_size, x0, y0, is_mask=False)
         mask_stitched, x_seam = stitch_image(msk[i], msk[j], M_shifted, canvas_size, x0, y0, is_mask=True)
@@ -315,4 +361,84 @@ for series_img in all_series_img:
             cv2.imwrite(img_out_path, img_stitched)
 
         cv2.imwrite(mask_out_path, mask_stitched)
+        saved += 1
+
+    return {"uid": uid, "status": "ok", "saved_pairs": saved}
+
+
+def _worker_align(jobs, results, out_images_dir, out_masks_dir):
+    """Worker process: consume series jobs and call process_series."""
+    while True:
+        job = jobs.get()
+        if job == "STOP":
+            break
+        try:
+            res = process_series(job["series_img"], job["series_msk"], out_images_dir, out_masks_dir)
+            results.put((job.get("uid"), True, res))
+        except Exception as e:
+            results.put((job.get("uid"), False, str(e)))
+
+
+if __name__ == "__main__":
+    # collect all series for images and masks
+    all_series_img = get_series(path_images=os.path.join(dir_img))
+    all_series_msk = get_series(path_images=os.path.join(dir_msk))
+
+    # optional: filter series by pattern
+    # PATTERN = "CH13063920260606"
+    # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
+    # all_series_msk = [s for s in all_series_msk if any(PATTERN in os.path.basename(p) for p in s)]
+
+    # build mask lookup by uid
+    mask_lookup = { _uid_from_path(s[0]): s for s in all_series_msk if s }
+
+    # prepare jobs
+    jobs_list = []
+    for series_img in all_series_img:
+        if not series_img:
+            continue
+        uid = _uid_from_path(series_img[0])
+        series_msk = mask_lookup.get(uid)
+        if not series_msk:
+            continue
+        jobs_list.append({"uid": uid, "series_img": series_img, "series_msk": series_msk})
+
+    if not jobs_list:
+        print("No series to process.")
+    else:
+        m = Manager()
+        jobs = m.Queue()
+        results_q = m.Queue()
+        processes = []
+
+        n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", max(1, os.cpu_count() - 1)))
+        print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
+
+        for _ in range(n_workers):
+            p = Process(target=_worker_align, args=(jobs, results_q, out_images_dir, out_masks_dir))
+            p.daemon = True
+            p.start()
+            processes.append(p)
+
+        # enqueue jobs
+        for job in jobs_list:
+            jobs.put(job)
+
+        # tell workers to stop when done
+        for _ in range(n_workers):
+            jobs.put("STOP")
+
+        # collect results
+        count = 0
+        total = len(jobs_list)
+        while count < total:
+            uid, ok, info = results_q.get()
+            count += 1
+            if ok:
+                print(f"✓ {uid} ({count}/{total}) saved_pairs={info.get('saved_pairs',0)}")
+            else:
+                print(f"✗ {uid}: {info} ({count}/{total})")
+
+        for p in processes:
+            p.join()
     

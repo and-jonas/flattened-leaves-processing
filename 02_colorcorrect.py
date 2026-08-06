@@ -362,40 +362,51 @@ class ColorTransform:
 # 4. BATCH PROCESSING
 # ============================================================================
 
-def batch_correct_images(image_dir, transform, output_dir=None, suffix="_corrected"):
-    """Apply color correction to all images in a directory."""
-    image_dir = Path(image_dir)
-    output_dir = Path(output_dir) if output_dir else image_dir / "corrected"
-    output_dir.mkdir(parents=True, exist_ok=True)
+# def batch_correct_images(image_dir, transform, output_dir=None, suffix="_corrected"):
+#     """Apply color correction to all images in a directory."""
+#     image_dir = Path(image_dir)
+#     output_dir = Path(output_dir) if output_dir else image_dir / "corrected"
+#     output_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(image_dir.glob("*.JPG"))
+#     image_files = sorted(image_dir.glob("*.JPG"))
 
-    for img_path in image_files:
-        try:
-            img = cv2.imread(str(img_path))
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img_corr = transform.apply(img)
-            img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
+#     for img_path in image_files:
+#         try:
+#             img = cv2.imread(str(img_path))
+#             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+#             img_corr = transform.apply(img)
+#             img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
 
-            out_path = output_dir / f"{img_path.stem}{suffix}.png"
-            cv2.imwrite(str(out_path), img_corr_bgr)
-            print(f"✓ {img_path.name} → {out_path.name}")
-        except Exception as e:
-            print(f"✗ {img_path.name}: {e}")
+#             out_path = output_dir / f"{img_path.stem}{suffix}.png"
+#             cv2.imwrite(str(out_path), img_corr_bgr)
+#             print(f"✓ {img_path.name} → {out_path.name}")
+#         except Exception as e:
+#             print(f"✗ {img_path.name}: {e}")
 
-    return output_dir
+#     return output_dir
 
-def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patch_w, patch_h, output_dir_str, control_dir_str):
-        """Top-level worker for multiprocessing (picklable)."""
-        output_dir = Path(output_dir_str)
-        control_dir = Path(control_dir_str)
-        detector = ColorCheckerDetector(fraction=fraction, roi=roi, kernel_size=kernel_size, save_dir=control_dir)
-        while True:
+def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patch_w, patch_h):
+    """Top-level worker for multiprocessing (picklable)."""
+    while True:
             job = jobs.get()
             if job == "STOP":
                 break
             img_name = job["image_name"]
             img_path = Path(job["image_path"])
+            # output dir
+            parts = list(img_path.parent.parts)
+            idx = parts.index("renamed")
+            parts[idx:idx + 1] = ["colorcorrected", "corrected"]
+            output_dir = Path(*parts)
+            # ensure the per-image output directory exists (match control structure)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            # control dir
+            parts = list(img_path.parent.parts)
+            idx = parts.index("renamed")
+            parts[idx:idx + 1] = ["colorcorrected", "control"]
+            control_dir = Path(*parts)
+            # instantiate detector with the per-image control directory
+            detector = ColorCheckerDetector(fraction=fraction, roi=roi, kernel_size=kernel_size, save_dir=control_dir)
             try:
                 input_patches, coords, _ = detector.detect(
                     img_path,
@@ -412,7 +423,7 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
                 img_corr = transform.apply(img)
                 img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
 
-                out_path = output_dir / f"{img_path.stem}.png"
+                out_path = output_dir / f"{img_path.stem}.png" 
                 cv2.imwrite(str(out_path), img_corr_bgr)
                 results.put((img_name, True, transform.rmse))
             except Exception as e:
@@ -425,19 +436,22 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 
 if __name__ == "__main__":
     
-    # Define paths: local
-    # DATA_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # DEST_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # output_dir = DEST_DIR / "corrected"
-    # save_dir = DEST_DIR / "control"
+    # # Define paths: local
+    # REF_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/ref")
+    # BASE_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # INPUT_DIR = BASE_DIR / "renamed"
+    # OUTPUT_DIR = BASE_DIR / "colorcorrected"
 
     # Define paths: SLURM
-    # DATA_DIR = Path(r"/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    DATA_DIR = Path(os.environ["SCRATCH"]) / "img"
-    ref_file = DATA_DIR / "ref" / "20240619_092442_ESWW0090037_2.JPG"
-    input_dir = DATA_DIR / "renamed"
-    output_dir = DATA_DIR / "corrected"
-    save_dir = DATA_DIR / "control"
+    BASE_DIR = Path(os.environ["SCRATCH"])
+    REF_DIR = BASE_DIR / "ref"
+    INPUT_DIR = BASE_DIR / "renamed"
+    OUTPUT_DIR = BASE_DIR / "colorcorrected"
+
+    ref_file = REF_DIR / "20240619_092442_ESWW0090037_2.JPG"
+    input_dir = INPUT_DIR
+    output_dir = OUTPUT_DIR / "corrected"
+    save_dir = OUTPUT_DIR / "control"
 
     # Step 1: Detect ColorChecker in reference image
     # this needs a roi guide to reliably find the color checker
@@ -455,30 +469,30 @@ if __name__ == "__main__":
         plot=True
     )
 
-    # Step 2: Detect ColorChecker in input image
-    # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
-    print("\n=== Step 2: Detect input ColorChecker ===")
-    input_detector = ColorCheckerDetector(
-        fraction=0.0005,
-        roi=None,
-        kernel_size=11,
-        save_dir=save_dir
-    )
-    sample_image = sorted(input_dir.glob("*.JPG"))[38]
-    input_patches, _, _ = input_detector.detect(
-        sample_image,
-        patch_w=315, patch_h=265,
-        plot=True
-    )
+    # # Step 2: Detect ColorChecker in input image
+    # # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
+    # print("\n=== Step 2: Detect input ColorChecker ===")
+    # input_detector = ColorCheckerDetector(
+    #     fraction=0.0005,
+    #     roi=None,
+    #     kernel_size=11,
+    #     save_dir=save_dir
+    # )
+    # sample_image = sorted(input_dir.glob("*/*.JPG"))[38]
+    # input_patches, _, _ = input_detector.detect(
+    #     sample_image,
+    #     patch_w=315, patch_h=265,
+    #     plot=True
+    # )
 
-    # Step 5: Batch process (detect per-image, calibrate to same reference, save control + corrected)
+    # Step 3: Batch process (detect per-image, calibrate to same reference, save control + corrected)
     print(f"\n=== Step 5: Batch correct images in {input_dir} ===")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    control_dir = save_dir if save_dir else output_dir.parent / "control"
-    control_dir.mkdir(parents=True, exist_ok=True)
+    # control_dir = save_dir if save_dir else output_dir.parent / "control"
+    # control_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(input_dir.glob("*.JPG"))
+    image_files = sorted(input_dir.glob("*/*.JPG"))
 
     # instantiate detector parameters (workers will create their own detector instances)
     fraction = 0.001
@@ -518,9 +532,7 @@ if __name__ == "__main__":
                     roi,
                     kernel_size,
                     pw,
-                    ph,
-                    str(output_dir),
-                    str(control_dir)
+                    ph
                 )
             )
             p.daemon = True
