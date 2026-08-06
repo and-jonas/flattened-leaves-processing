@@ -11,6 +11,7 @@ import glob
 from pathlib import Path
 import logging
 import os
+import sys
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,15 +44,20 @@ pred = Predictor(config_name='flattened_leaves',
 
 # from $SCRATCH to reduce I/O limitations on the server
 dir_to_process = Path(os.environ["SCRATCH"])
+subdir = sys.argv[1]
 
 # predict
-pred.predict(images_src=f'{dir_to_process}/inference_crops/1', export_dst=f'{dir_to_process}/predictions/1')
+pred.predict(
+    images_src=dir_to_process / "inference_crops"/ subdir, 
+    export_dst=dir_to_process / "predictions"/ subdir
+)
 
 # visualize
 vis = FlattenedVisualizer(
-    src_root=f'{dir_to_process}/predictions/1', 
-    rgb_root=f'{dir_to_process}/inference_crops/1', 
-    export_root=f'{dir_to_process}/predictions/1')
+    src_root=dir_to_process / "predictions"/ subdir, 
+    rgb_root=dir_to_process / "inference_crops"/ subdir, 
+    export_root=dir_to_process / "predictions"/ subdir
+)
 vis.visualize()
 
 # # loop over directories

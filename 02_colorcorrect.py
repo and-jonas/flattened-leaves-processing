@@ -3,7 +3,6 @@ from tracemalloc import stop
 import cv2
 from matplotlib import pyplot as plt
 import numpy as np
-import multiprocessing
 from multiprocessing import Manager, Process
 import os
 import pandas as pd
@@ -248,11 +247,15 @@ class ColorCheckerDetector:
 
         # get red patch
         mask_red = get_color_mask(img, color = "red", fraction=self.fraction, roi=self.roi)
+        # plt.imshow(mask_red)
+        # plt.show(block=True)
         mask_red_proc = post_process_mask(mask_red, kernel_size=self.kernel_size)
         largest_comp_red, anchor1 = get_largest_connected_component(mask_red_proc)
-
+        
         # get magenta patch
         mask_mag = get_color_mask(img, color="magenta", fraction=self.fraction, roi=self.roi)
+        # plt.imshow(mask_mag)
+        # plt.show(block=True)
         mask_mag_proc = post_process_mask(mask_mag, kernel_size=self.kernel_size)
         largest_comp_mag, anchor2 = get_largest_connected_component(mask_mag_proc)
 
@@ -265,7 +268,7 @@ class ColorCheckerDetector:
         #     sharey=True
         # )
 
-        # axes[0].imshow(mask_mag)
+        # axes[0].imshow(mask_red)
         # axes[0].set_title("Image 1")
 
         # axes[1].imshow(img)
@@ -383,29 +386,6 @@ class ColorTransform:
 # 4. BATCH PROCESSING
 # ============================================================================
 
-# def batch_correct_images(image_dir, transform, output_dir=None, suffix="_corrected"):
-#     """Apply color correction to all images in a directory."""
-#     image_dir = Path(image_dir)
-#     output_dir = Path(output_dir) if output_dir else image_dir / "corrected"
-#     output_dir.mkdir(parents=True, exist_ok=True)
-
-#     image_files = sorted(image_dir.glob("*.JPG"))
-
-#     for img_path in image_files:
-#         try:
-#             img = cv2.imread(str(img_path))
-#             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-#             img_corr = transform.apply(img)
-#             img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
-
-#             out_path = output_dir / f"{img_path.stem}{suffix}.png"
-#             cv2.imwrite(str(out_path), img_corr_bgr)
-#             print(f"✓ {img_path.name} → {out_path.name}")
-#         except Exception as e:
-#             print(f"✗ {img_path.name}: {e}")
-
-#     return output_dir
-
 def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patch_w, patch_h):
     """Top-level worker for multiprocessing (picklable)."""
     while True:
@@ -437,15 +417,22 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
                 transform = ColorTransform()
                 transform.calibrate(input_patches, ref_patches)
 
-                img = cv2.imread(str(img_path))
-                if img is None:
+                img_bgr = cv2.imread(str(img_path))
+                if img_bgr is None:
                     raise FileNotFoundError(f"Cannot read {img_path}")
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img_corr = transform.apply(img)
-                img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
 
-                out_path = output_dir / f"{img_path.stem}.png" 
-                cv2.imwrite(str(out_path), img_corr_bgr)
+                out_path = output_dir / f"{img_path.stem}.png"
+
+                # If RMSE is large, keep the original image instead of the corrected one
+                if (transform.rmse is not None) and (transform.rmse > 20):
+                    # save original BGR image
+                    cv2.imwrite(str(out_path), img_bgr)
+                else:
+                    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                    img_corr = transform.apply(img_rgb)
+                    img_corr_bgr = cv2.cvtColor(img_corr, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(str(out_path), img_corr_bgr)
+
                 results.put((img_name, True, transform.rmse))
             except Exception as e:
                 results.put((img_name, False, str(e)))
@@ -457,17 +444,17 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 
 if __name__ == "__main__":
     
-    # Define paths: local
-    REF_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/ref")
-    BASE_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    INPUT_DIR = BASE_DIR / "renamed"
-    OUTPUT_DIR = BASE_DIR / "colorcorrected"
-
-    # # Define paths: SLURM
-    # BASE_DIR = Path(os.environ["SCRATCH"])
-    # REF_DIR = BASE_DIR / "ref"
+    # # Define paths: local
+    # REF_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/ref")
+    # BASE_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     # INPUT_DIR = BASE_DIR / "renamed"
     # OUTPUT_DIR = BASE_DIR / "colorcorrected"
+
+    # Define paths: SLURM
+    BASE_DIR = Path(os.environ["SCRATCH"])
+    REF_DIR = BASE_DIR / "ref"
+    INPUT_DIR = BASE_DIR / "renamed"
+    OUTPUT_DIR = BASE_DIR / "colorcorrected"
 
     ref_file = REF_DIR / "20240619_092442_ESWW0090037_2.JPG"
     input_dir = INPUT_DIR
@@ -476,7 +463,6 @@ if __name__ == "__main__":
 
     # Step 1: Detect ColorChecker in reference image
     # this needs a roi guide to reliably find the color checker
-    # due to complex lighting and many black parts present in the image
     print("\n=== Step 1: Detect reference ColorChecker ===")
     ref_detector = ColorCheckerDetector(
         fraction=0.05,
@@ -494,15 +480,39 @@ if __name__ == "__main__":
     print(f"\n=== Step 2: Batch correct images in {input_dir} ===")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    # control_dir = save_dir if save_dir else output_dir.parent / "control"
-    # control_dir.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(input_dir.glob("*/*.JPG"))
-    image_files = [f for f in image_files if "20260625_170133_CH13063920260385.JPG" in f.name]
+    # list all files to process (recursively)
+    image_files = sorted(input_dir.glob("**/*.JPG"))
 
-    # instantiate detector parameters (workers will create their own detector instances)
-    fraction = 0.001
-    roi = None
+    # there seem to be duplicates; remove duplicates by name (keep first occurrence)
+    seen = set()
+    image_files_unique = []
+    for f in image_files:
+        if f.name not in seen:
+            image_files_unique.append(f)
+            seen.add(f.name)
+    image_files = image_files_unique
+
+    # filter out already processed images
+    skip_processed = False
+    if skip_processed:
+        existing = set(p.stem for p in output_dir.glob("**/*.png"))
+        image_files = [f for f in image_files if f.stem not in existing]
+
+    # # select problematic examples
+    # keep_names = [
+    #     "20260628_181329_CH13063920260402.JPG",
+    #     "20260625_113946_CH13063920260797.JPG",
+    #     "20260624_170248_CH13063920260712.JPG",
+    #     "20260626_150808_CH13063920260439.JPG",
+    #     "20260630_150126_CH13063920260056.JPG",
+    #     "20260626_142815_CH13063920260416.JPG"
+    # ]
+    # image_files = [f for f in image_files if f.name in keep_names]
+
+    # instantiate detector parameters
+    fraction = 0.015 ## CRITICAL PARAMETER: fraction of pixels to consider for patch detection. Ensure that as much of the patch is detected as possible; without spurious detection of similar patches
+    roi = (0, 0, 2000, 2000)  # upper left corner
     kernel_size = 11
     pw, ph = 320, 270
 
@@ -514,7 +524,7 @@ if __name__ == "__main__":
 
     max_jobs = len(image_files)
     if max_jobs == 0:
-        print("No images found.")
+        print("No images to process.")
     else:
         # enqueue jobs
         for img_path in image_files:
@@ -524,7 +534,6 @@ if __name__ == "__main__":
                 "image_path": str(img_path)
             })
 
-        # n_workers = max(1, multiprocessing.cpu_count() - 1)
         n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))  # when processing on Gamarello
         print(f"running on {input_dir} with {n_workers} workers ===")
         for _ in range(n_workers):
@@ -546,8 +555,16 @@ if __name__ == "__main__":
             processes.append(p)
             jobs.put("STOP")
 
-        # collect results
+        # collect results and write RMSE continuously
         rmse_log = []
+
+        # prepare RMSE CSV for incremental writing
+        save_dir.mkdir(parents=True, exist_ok=True)
+        rmse_file = save_dir / "rmse_log.csv"
+        write_header = not rmse_file.exists()
+        if write_header:
+            with open(rmse_file, "w", newline="") as fh:
+                fh.write("image,ok,rmse,error\n")
 
         count = 0
         while count < max_jobs:
@@ -556,14 +573,18 @@ if __name__ == "__main__":
             if ok:
                 rmse = info
                 rmse_log.append((name, rmse))
+                with open(rmse_file, "a", newline="") as fh:
+                    fh.write(f"{name},True,{rmse},\n")
                 print(f"✓ {name} ({count}/{max_jobs})  RMSE={rmse:.2f}")
             else:
+                # write error row with empty RMSE
+                with open(rmse_file, "a", newline="") as fh:
+                    # escape quotes in error string
+                    err = str(info).replace('"', '""')
+                    fh.write(f"{name},False,,\"{err}\"\n")
                 print(f"✗ {name}: {info} ({count}/{max_jobs})")
 
         for p in processes:
             p.join()
-
-        rmse_df = pd.DataFrame(rmse_log, columns=["image", "rmse"])
-        rmse_df.to_csv(save_dir / "rmse.csv", index=False)
 
     print(f"✓ Done. Output: {output_dir}")
