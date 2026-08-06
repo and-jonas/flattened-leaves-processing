@@ -497,7 +497,7 @@ if __name__ == "__main__":
     # control_dir.mkdir(parents=True, exist_ok=True)
 
     image_files = sorted(input_dir.glob("*/*.JPG"))
-    image_files = [f for f in image_files if "20260625_080819_CH13063920260750.JPG" in f.name]
+    # image_files = [f for f in image_files if "20260625_080819_CH13063920260750.JPG" in f.name]
 
     # instantiate detector parameters (workers will create their own detector instances)
     fraction = 0.001
