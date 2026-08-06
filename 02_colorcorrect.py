@@ -162,6 +162,7 @@ def generate_checker_grid_from_anchor(
             y2c = min(h_img, y2)
 
             if x1c >= x2c or y1c >= y2c:
+                patch_values.append(np.array([np.nan, np.nan, np.nan]))
                 continue
 
             dxm = int((x2c - x1c) * margin)
@@ -456,17 +457,17 @@ def _worker_process(jobs, results, ref_patches, fraction, roi, kernel_size, patc
 
 if __name__ == "__main__":
     
-    # # Define paths: local
-    # REF_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/ref")
-    # BASE_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # INPUT_DIR = BASE_DIR / "renamed"
-    # OUTPUT_DIR = BASE_DIR / "colorcorrected"
-
-    # Define paths: SLURM
-    BASE_DIR = Path(os.environ["SCRATCH"])
-    REF_DIR = BASE_DIR / "ref"
+    # Define paths: local
+    REF_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/ref")
+    BASE_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     INPUT_DIR = BASE_DIR / "renamed"
     OUTPUT_DIR = BASE_DIR / "colorcorrected"
+
+    # # Define paths: SLURM
+    # BASE_DIR = Path(os.environ["SCRATCH"])
+    # REF_DIR = BASE_DIR / "ref"
+    # INPUT_DIR = BASE_DIR / "renamed"
+    # OUTPUT_DIR = BASE_DIR / "colorcorrected"
 
     ref_file = REF_DIR / "20240619_092442_ESWW0090037_2.JPG"
     input_dir = INPUT_DIR
@@ -497,7 +498,7 @@ if __name__ == "__main__":
     # control_dir.mkdir(parents=True, exist_ok=True)
 
     image_files = sorted(input_dir.glob("*/*.JPG"))
-    # image_files = [f for f in image_files if "20260625_080819_CH13063920260750.JPG" in f.name]
+    image_files = [f for f in image_files if "20260625_170133_CH13063920260385.JPG" in f.name]
 
     # instantiate detector parameters (workers will create their own detector instances)
     fraction = 0.001
