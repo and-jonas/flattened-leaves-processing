@@ -1,4 +1,5 @@
 from pathlib import Path
+from tracemalloc import stop
 import cv2
 from matplotlib import pyplot as plt
 import numpy as np
@@ -172,8 +173,11 @@ def generate_checker_grid_from_anchor(
             sy2 = y2c - dym
 
             sampled = img[sy1:sy2, sx1:sx2]
-
-            patch_values.append(sampled.mean(axis=(0, 1)))
+            n_pix_patch = sampled.shape[0]*sampled.shape[1]
+            if n_pix_patch < 2500:
+                patch_values.append(np.array([np.nan, np.nan, np.nan]))
+            else:
+                patch_values.append(sampled.mean(axis=(0, 1)))
 
             patch_coords.append({
                 "id": row * 6 + col,
@@ -204,11 +208,11 @@ def plot_checker_grid(img, patch_coords, save_path=None):
         cv2.putText(img_vis, f'{p["row"]},{p["col"]}',
                     (x1+3, y1+15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
 
-        # plt.figure(figsize=(10, 8))
-        # plt.imshow(img_vis)
-        # plt.axis("off")
-        # plt.tight_layout()
-        # plt.show()
+    # plt.figure(figsize=(10, 8))
+    # plt.imshow(img_vis)
+    # plt.axis("off")
+    # plt.tight_layout()
+    # plt.show()
 
     if save_path is not None:
         cv2.imwrite(str(save_path), cv2.cvtColor(img_vis, cv2.COLOR_RGB2BGR))
@@ -319,25 +323,30 @@ class ColorTransform:
                 f"vs reference {reference_patches.shape}"
             )
 
-        n = len(source_patches)
+        # Filter out any rows containing NaNs in either source or reference
+        valid_mask = (~np.isnan(source_patches).any(axis=1)) & (~np.isnan(reference_patches).any(axis=1))
+        valid_idx = np.where(valid_mask)[0]
+        n = len(valid_idx)
         if n < 3:
-            raise ValueError(f"Need at least 3 patches, got {n}")
+            raise ValueError(f"Need at least 3 valid patches for calibration, got {n}")
+
+        src = source_patches[valid_idx].astype(np.float32)
+        ref = reference_patches[valid_idx].astype(np.float32)
 
         # Fit: [RGB, 1] @ C = RGB_ref  →  C = [A; b]
         X = np.hstack([
-            source_patches.astype(np.float32),
+            src,
             np.ones((n, 1), dtype=np.float32)
         ])
-        
-        reference = reference_patches.astype(np.float32)
-        C, residuals, rank, s = np.linalg.lstsq(X, reference, rcond=None)
+
+        C, residuals, rank, s = np.linalg.lstsq(X, ref, rcond=None)
 
         self.A = C[:3, :]
         self.b = C[3, :]
 
-        # Compute RMSE
+        # Compute RMSE only on the used (valid) patches
         pred = X @ C
-        self.rmse = np.sqrt(np.mean((pred - reference) ** 2))
+        self.rmse = float(np.sqrt(np.mean((pred - ref) ** 2)))
 
         return self
 
@@ -352,9 +361,20 @@ class ColorTransform:
 
     def validate(self, source_patches, reference_patches):
         """Check fit quality on patches."""
-        pred = self.apply(source_patches).astype(np.float32)
-        error = np.abs(pred - reference_patches.astype(np.float32))
-        print(f"Validation on {len(source_patches)} patches:")
+        # Filter valid rows
+        valid_mask = (~np.isnan(source_patches).any(axis=1)) & (~np.isnan(reference_patches).any(axis=1))
+        valid_idx = np.where(valid_mask)[0]
+        n = len(valid_idx)
+        if n == 0:
+            print("Validation: no valid patches to evaluate (all NaN)")
+            return
+
+        src = source_patches[valid_idx]
+        ref = reference_patches[valid_idx].astype(np.float32)
+
+        pred = self.apply(src).astype(np.float32)
+        error = np.abs(pred - ref)
+        print(f"Validation on {n} patches (filtered NaNs):")
         print(f"  Mean error per channel: {error.mean(axis=0)}")
         print(f"  Max error per channel:  {error.max(axis=0)}")
 
@@ -469,30 +489,15 @@ if __name__ == "__main__":
         plot=True
     )
 
-    # # Step 2: Detect ColorChecker in input image
-    # # should not require a roi guide, as images are are clearer and under more uniform lighting conditions
-    # print("\n=== Step 2: Detect input ColorChecker ===")
-    # input_detector = ColorCheckerDetector(
-    #     fraction=0.0005,
-    #     roi=None,
-    #     kernel_size=11,
-    #     save_dir=save_dir
-    # )
-    # sample_image = sorted(input_dir.glob("*/*.JPG"))[38]
-    # input_patches, _, _ = input_detector.detect(
-    #     sample_image,
-    #     patch_w=315, patch_h=265,
-    #     plot=True
-    # )
-
-    # Step 3: Batch process (detect per-image, calibrate to same reference, save control + corrected)
-    print(f"\n=== Step 5: Batch correct images in {input_dir} ===")
+    # Step 2: Batch process (detect per-image, calibrate to same reference, save control + corrected)
+    print(f"\n=== Step 2: Batch correct images in {input_dir} ===")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     # control_dir = save_dir if save_dir else output_dir.parent / "control"
     # control_dir.mkdir(parents=True, exist_ok=True)
 
     image_files = sorted(input_dir.glob("*/*.JPG"))
+    image_files = [f for f in image_files if "20260625_080819_CH13063920260750.JPG" in f.name]
 
     # instantiate detector parameters (workers will create their own detector instances)
     fraction = 0.001
@@ -519,7 +524,7 @@ if __name__ == "__main__":
             })
 
         # n_workers = max(1, multiprocessing.cpu_count() - 1)
-        n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))
+        n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))  # when processing on Gamarello
         print(f"running on {input_dir} with {n_workers} workers ===")
         for _ in range(n_workers):
             p = Process(
