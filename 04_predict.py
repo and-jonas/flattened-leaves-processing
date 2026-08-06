@@ -42,16 +42,16 @@ pred = Predictor(config_name='flattened_leaves',
 # dir_to_process = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
 
 # from $SCRATCH to reduce I/O limitations on the server
-dir_to_process = Path(os.environ["SCRATCH"]) / "inference_crops/1"
+dir_to_process = Path(os.environ["SCRATCH"])
 
 # predict
-pred.predict(images_src=f'{dir_to_process}/inference_crops', export_dst=f'{dir_to_process}/predictions')
+pred.predict(images_src=f'{dir_to_process}/inference_crops/1', export_dst=f'{dir_to_process}/predictions/1')
 
 # visualize
 vis = FlattenedVisualizer(
-    src_root=f'{dir_to_process}/predictions', 
-    rgb_root=f'{dir_to_process}/inference_crops', 
-    export_root=f'{dir_to_process}/predictions')
+    src_root=f'{dir_to_process}/predictions/1', 
+    rgb_root=f'{dir_to_process}/inference_crops/1', 
+    export_root=f'{dir_to_process}/predictions/1')
 vis.visualize()
 
 # # loop over directories
