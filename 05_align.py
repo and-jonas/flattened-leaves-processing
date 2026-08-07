@@ -31,7 +31,7 @@ def get_series(path_images: str, leaf_uid: Optional[str] = None) -> List[List[st
     Returns:
         A list where each item is a sorted list of filepaths for one sample.
     """
-    exts = [".JPG", ".JPEG", ".PNG", ".TIF", ".TIFF"]
+    exts = [".JPG", ".JPEG", ".PNG", ".TIF", ".TIFF", ".jpg", ".jpeg", ".png", ".tif", ".tiff"]
     images: List[str] = []
     for ext in exts:
         images.extend(glob.glob(f"{path_images}/*{ext}"))
