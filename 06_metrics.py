@@ -14,9 +14,9 @@ from scipy import ndimage as ndi
 
 base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
 
-path_seg_mask = base_path / "predictions/symptoms_seg/20230604_132542_ESWW0070020_1.png"
-path_det_mask = base_path / "predictions/symptoms_det/20230604_132542_ESWW0070020_1.png"
-path_rgb_img = base_path / "inference_crops/20230604_132542_ESWW0070020_1.JPG"
+path_seg_mask = base_path / "predictions/1/symptoms_seg/20230604_132542_ESWW0070020_1.png"
+path_det_mask = base_path / "predictions/1/symptoms_det/20230604_132542_ESWW0070020_1.png"
+path_rgb_img = base_path / "inference_crops/1/20230604_132542_ESWW0070020_1.JPG"
 
 out_path = base_path / "metrics"
 
@@ -34,6 +34,8 @@ csv_name = base_name.replace(".png", ".csv")
 # get masks
 seg_mask = cv2.imread(str(path_seg_mask), cv2.IMREAD_UNCHANGED)
 det_mask = cv2.imread(str(path_det_mask), cv2.IMREAD_UNCHANGED)
+rgb_img = cv2.imread(str(path_rgb_img), cv2.IMREAD_COLOR)
+rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
 
 # LEAF_BACKGROUND = 0
 # LEAF = 1
@@ -125,10 +127,6 @@ df.to_csv(out_path / csv_name, index=False)
 # if len(contours) < 1:
 #     continue
 
-# # Process each detected object in the current frame
-# img = cv2.imread(str(path_rgb_img), cv2.IMREAD_COLOR)
-# checker = copy.copy(img)
-
 lesion_data = []
 
 # prepare distance map
@@ -139,13 +137,55 @@ distance_invert = ndi.distance_transform_edt(mask_invert)
 # image_with_pycn = copy.copy(img)
 
 # prepare pycnidia density map
-pycn_distmap, pycn_dmap = base_utils.get_pycnidia_maps(
+pycn_distmap, pycn_dmap, norm_d = base_utils.get_pycnidia_maps(
     mask=mask,
     resize_factor=5, bandwidth=25, kernel='gaussian'
 )
 
-# plt.imshow(pycn_dmap)
-# plt.show()
+overlay = rgb_img.copy()
+
+# Same contour levels as before
+levels = np.linspace(
+    np.percentile(norm_d[norm_d > 0], 94),
+    np.percentile(norm_d[norm_d > 0], 99.9),
+    5
+)
+
+# Get colors from the same colormap
+cmap = plt.cm.cool
+colors = cmap(np.linspace(0, 1, len(levels)))[:, :3]  # remove alpha
+colors = (colors * 255).astype(np.uint8)
+
+# Draw each contour level
+for level, color in zip(levels, colors):
+
+    mask = (norm_d >= level).astype(np.uint8)
+
+    contours, _ = cv2.findContours(
+        mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    # OpenCV uses BGR, so reverse RGB color
+    color_bgr = tuple(int(c) for c in color[::-1])
+
+    cv2.drawContours(
+        overlay,
+        contours,
+        -1,
+        color_bgr,
+        thickness=3
+    )
+
+# Save
+out_path_pmap = out_path / "pmap"
+if not out_path_pmap.exists():
+    out_path_pmap.mkdir(parents=True, exist_ok=True)
+cv2.imwrite(
+    out_path_pmap / jpg_name,
+    cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR)
+)
 
 instance_mask = np.zeros_like(mask)
 for idx, contour in enumerate(contours):
@@ -205,19 +245,16 @@ for idx, contour in enumerate(contours):
             'rust_density_lesion': rust_density_lesion
             }
 
-    # draw pycnidiation contour
-    if pycn_contour is not None:
-        for p in pycn_contour:
-            cv2.drawContours(image_with_pycn, p, -1, (255, 255, 0), 2)
-    cv2.drawContours(image_with_pycn, contour, -1, (0, 0, 0), 2)
+    # # draw pycnidiation contour
+    # if pycn_contour is not None:
+    #     for p in pycn_contour:
+    #         cv2.drawContours(image_with_pycn, p, -1, (255, 255, 0), 2)
+    # cv2.drawContours(image_with_pycn, contour, -1, (0, 0, 0), 2)
 
     # data
     ldat = ldat | pycn_features
     lesion_data.append(ldat)
 
-# except:
-#     self.log_fail(sample_name)
-#     continue
-
-# export instance mask
-cv2.imwrite(f'{out_paths[8]}/{png_name}', instance_mask)
+# save lesion data
+df = pd.DataFrame(lesion_data, columns=lesion_data[0].keys())
+df.to_csv(f'{out_paths[2]}/{data_name}', index=False)

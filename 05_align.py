@@ -10,6 +10,9 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 from multiprocessing import Manager, Process
 
+from pathlib import Path
+import sys
+
 def _uid_from_path(p: str) -> str:
     parts = os.path.splitext(os.path.basename(p))[0].split("_")
     return "_".join(parts[2:4])
@@ -254,31 +257,26 @@ def plot_inlier_matches(img1, img2, kp1, kp2, matches, inliers_mask, scale=0.5, 
     else:
         plt.show()
 
-
-# directories
-dir_img = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed/inference_crops"
-dir_msk = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed/predictions/symptoms_seg/pred"
-
-# output directories for aligned results
-out_images_dir = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed/aligned/images"
-out_masks_dir = "O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed/aligned/masks"
-
-def process_series(series_img, series_msk, out_images_dir, out_masks_dir):
+def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, out_matches_dir, out_masks_dir):
     """Process a single leaf series: detect features, match, stitch and save outputs.
 
-    `series_img` and `series_msk` are lists of file paths (strings).
+    `series_img`, `series_msk_seg`, and `series_msk_det` are lists of file paths (strings).
     """
     if not series_img:
         return {"uid": None, "status": "empty"}
 
     uid = _uid_from_path(series_img[0])
-    if not series_msk:
+    if not series_msk_seg and not series_msk_det:
         return {"uid": uid, "status": "no_masks"}
 
     # load images and masks for this uid
     img = [read_image(p, mode="rgb") for p in series_img]
-    msk = [read_image(p, mode="mask") for p in series_msk]
-    leaf_masks = [get_leaf_mask(m) for m in msk]
+    msk_seg = [read_image(p, mode="mask") for p in series_msk_seg]
+    msk_det = [read_image(p, mode="mask") for p in series_msk_det]
+    # get leaf masks
+    leaf_masks = [get_leaf_mask(m) for m in msk_seg]
+    # get combined masks
+    msk = [np.where(det > 0, det + 4, seg) for seg, det in zip(msk_seg, msk_det)]
 
     # Compute SIFT features
     sift = cv2.SIFT_create(nfeatures=1500)
@@ -330,11 +328,11 @@ def process_series(series_img, series_msk, out_images_dir, out_masks_dir):
 
         # visualize and save match/inliers image (scaled to detector size)
         try:
-            os.makedirs(out_images_dir, exist_ok=True)
+            os.makedirs(out_matches_dir, exist_ok=True)
             base1 = os.path.splitext(os.path.basename(series_img[i]))[0]
             base2 = os.path.splitext(os.path.basename(series_img[j]))[0]
             matches_fname = f"{base1}-{base2}_matches.png"
-            matches_path = os.path.join(out_images_dir, matches_fname)
+            matches_path = os.path.join(out_matches_dir, matches_fname)
             plot_inlier_matches(img[i], img[j], features[i]["kp"], features[j]["kp"], r.get("good", []), r.get("inliers_mask", []), scale=0.5, savepath=matches_path)
         except Exception:
             pass
@@ -344,7 +342,7 @@ def process_series(series_img, series_msk, out_images_dir, out_masks_dir):
         mask_stitched, x_seam = stitch_image(msk[i], msk[j], M_shifted, canvas_size, x0, y0, is_mask=True)
 
         # ensure output directories exist
-        os.makedirs(out_images_dir, exist_ok=True)
+        os.makedirs(out_aligned_dir, exist_ok=True)
         os.makedirs(out_masks_dir, exist_ok=True)
 
         # save stitched image (convert RGB->BGR for OpenCV) and mask
@@ -352,7 +350,7 @@ def process_series(series_img, series_msk, out_images_dir, out_masks_dir):
         base2 = os.path.splitext(os.path.basename(series_img[j]))[0]
         fname_img = f"{base1}-{base2}.png"
         fname_mask = f"{base1}-{base2}_mask.png"
-        img_out_path = os.path.join(out_images_dir, fname_img)
+        img_out_path = os.path.join(out_aligned_dir, fname_img)
         mask_out_path = os.path.join(out_masks_dir, fname_mask)
 
         try:
@@ -373,35 +371,65 @@ def _worker_align(jobs, results, out_images_dir, out_masks_dir):
         if job == "STOP":
             break
         try:
-            res = process_series(job["series_img"], job["series_msk"], out_images_dir, out_masks_dir)
+            # determine per-job output subfolders: keep input substructure
+            sub = job.get("subdir", "")
+            base_out = Path(out_images_dir)
+            # base_out is actually the aligned base directory (aligned/)
+            out_aligned = str(base_out / sub / "aligned")
+            out_matches = str(base_out / sub / "matches")
+            out_masks = str(Path(out_masks_dir) / sub / "masks")
+            res = process_series(job["series_img"], job["series_msk_seg"], job["series_msk_det"], out_aligned, out_matches, out_masks)
             results.put((job.get("uid"), True, res))
         except Exception as e:
             results.put((job.get("uid"), False, str(e)))
 
 
 if __name__ == "__main__":
+
+    # directories
+    # BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    BASE_DIR = Path(os.environ["SCRATCH"])
+    subdir = sys.argv[1]
+
+    dir_img = BASE_DIR / "inference_crops" / subdir 
+    dir_msk_seg = BASE_DIR / "predictions" / subdir / "symptoms_seg" / "pred"
+    dir_msk_det = BASE_DIR / "predictions" / subdir / "symptoms_det" / "pred"
+
+    # output directories for aligned results
+    out_images_dir = BASE_DIR / "aligned" / subdir / "images"
+    out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
+
     # collect all series for images and masks
     all_series_img = get_series(path_images=os.path.join(dir_img))
-    all_series_msk = get_series(path_images=os.path.join(dir_msk))
+    all_series_msk_seg = get_series(path_images=os.path.join(dir_msk_seg))
+    all_series_msk_det = get_series(path_images=os.path.join(dir_msk_det))
 
     # optional: filter series by pattern
     # PATTERN = "CH13063920260606"
     # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
     # all_series_msk = [s for s in all_series_msk if any(PATTERN in os.path.basename(p) for p in s)]
 
-    # build mask lookup by uid
-    mask_lookup = { _uid_from_path(s[0]): s for s in all_series_msk if s }
+    # build mask lookups by uid for segmentation and detection masks
+    mask_lookup_seg = { _uid_from_path(s[0]): s for s in all_series_msk_seg if s }
+    mask_lookup_det = { _uid_from_path(s[0]): s for s in all_series_msk_det if s }
 
-    # prepare jobs
+    # prepare jobs: include both segmentation and detection mask series (may be empty)
     jobs_list = []
     for series_img in all_series_img:
         if not series_img:
             continue
         uid = _uid_from_path(series_img[0])
-        series_msk = mask_lookup.get(uid)
-        if not series_msk:
+        series_msk_seg = mask_lookup_seg.get(uid, [])
+        series_msk_det = mask_lookup_det.get(uid, [])
+        # skip if neither mask type is available
+        if not series_msk_seg and not series_msk_det:
             continue
-        jobs_list.append({"uid": uid, "series_img": series_img, "series_msk": series_msk})
+        jobs_list.append({
+            "uid": uid,
+            "series_img": series_img,
+            "series_msk_seg": series_msk_seg,
+            "series_msk_det": series_msk_det,
+        })
 
     if not jobs_list:
         print("No series to process.")
@@ -411,7 +439,8 @@ if __name__ == "__main__":
         results_q = m.Queue()
         processes = []
 
-        n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", max(1, os.cpu_count() - 1)))
+        # n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", max(1, os.cpu_count() - 1)))
+        n_workers = 1
         print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
 
         for _ in range(n_workers):

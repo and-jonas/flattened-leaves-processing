@@ -161,4 +161,111 @@ def get_pycnidia_maps(mask, resize_factor, bandwidth, kernel):
         # Remove the alpha channel and scale to 0-255 for saving
         color_image_density = (color_image[:, :, :3] * 255).astype(np.uint8)
 
-    return color_image_distance, color_image_density
+    return color_image_distance, color_image_density, normalized_density
+
+def get_pycn_features(mask, lesion_mask, contour, max_dist, bandwidth, kernel):
+
+    # fig, axs = plt.subplots(1, 2, sharex=True, sharey=True)
+    # axs[0].imshow(lesion_binary)
+    # axs[0].set_title('mask')
+    # axs[1].imshow(mask)
+    # axs[1].set_title('density')
+    # plt.show(block=True)
+
+    # binarize pycnidia, multiply with lesion mask
+    pycnidia_binary = np.uint8(np.where(mask == 212, 1, 0) * lesion_mask / 255)
+
+    # pycnidia coordinates
+    coords = np.where(pycnidia_binary == 1)
+    coords = np.array(list(zip(coords[0], coords[1])))
+
+    if len(coords) == 0:
+        keys = ["frac_pycn", "mean_dist", "variance_dist", "min_dist", "max_dist", "median_dist",
+                "mean_l_density", "variance_l_density", "min_l_density", "max_l_density", "median_l_density",
+                "mean_p_density", "variance_p_density", "min_p_density", "max_p_density", "median_p_density"]
+        return {key: np.nan for key in keys}, None
+    else:
+
+        # (1) DISTANCE
+        # get contour distance values
+        dmap = ndimage.distance_transform_edt(1 - pycnidia_binary)
+        contour_points = contour[:, 0, :]
+        dists = []
+        for point in contour_points:
+            x, y = np.round(point).astype(int)
+            if 0 <= x < dmap.shape[1] and 0 <= y < dmap.shape[0]:  # Ensure within bounds
+                dists.append(dmap[y, x])
+        dists = np.asarray(dists)
+
+        # get distance features
+        pycn_contour = np.where(dists <= max_dist)[0]
+        dist_array = np.array(dists)
+        distance_features = {
+            "frac_pycn": len(pycn_contour) / len(contour),
+            "mean_dist": np.mean(dist_array),
+            "variance_dist": np.var(dist_array),
+            "min_dist": np.min(dist_array),
+            "max_dist": np.max(dist_array),
+            "median_dist": np.median(dist_array)
+        }
+
+        # get pycnidiation area as defined by maximum distance from most nearby pycnidium
+        binary_mask = lesion_mask.astype(bool)
+        dmap_lesion = dmap * binary_mask
+        pycnidian_mask_distance_based = np.where(dmap_lesion < max_dist, 1, 0)
+        pycnidian_mask_distance_based = pycnidian_mask_distance_based * lesion_mask
+        pycn_contour_distance_based, _ = cv2.findContours(np.uint8(pycnidian_mask_distance_based * 255), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        # plt.imshow(pycnidian_mask_distance_based)
+        # plt.show()
+
+        # (2) DENSITY
+        # get kernel density estimate
+        kde = KernelDensity(bandwidth=bandwidth, kernel=kernel)
+        kde.fit(coords)
+
+        # resize for faster processing
+        height = int(lesion_mask.shape[0] / 5)
+        width = int(lesion_mask.shape[1] / 5)
+        x = np.linspace(0, lesion_mask.shape[1] - 1, width)  # Match resized grid
+        y = np.linspace(0, lesion_mask.shape[0] - 1, height)
+        x, y = np.meshgrid(x, y)
+        grid_coords = np.vstack([y.ravel(), x.ravel()]).T  # Note: (y, x) for consistency
+
+        # Evaluate KDE on the grid
+        log_density = kde.score_samples(grid_coords)
+        density = np.exp(log_density).reshape(height, width)
+        density *= len(coords)  # Scale density by the total number of points
+        density_rsz = cv2.resize(density, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_NEAREST)
+
+        # mask everything except lesion
+        binary_mask = lesion_mask.astype(bool)
+        density_array = density_rsz[binary_mask]
+
+        # get density features
+        lesion_density_features = {
+            "mean_l_density": np.mean(density_array),
+            "variance_l_density": np.var(density_array),
+            "min_l_density": np.min(density_array),
+            "max_l_density": np.max(density_array),
+            "median_l_density": np.median(density_array)
+        }
+
+        # get a pycnidiation density contour
+        pycnidiation_mask = pycnidian_mask_distance_based
+        lesion_pycn_mask = np.logical_and(lesion_mask, pycnidiation_mask)
+        binary_mask = lesion_pycn_mask.astype(bool)
+        density_array = density_rsz[binary_mask]
+
+        # get density features
+        pycnidiation_density_features = {
+            "mean_p_density": np.mean(density_array),
+            "variance_p_density": np.var(density_array),
+            "min_p_density": np.min(density_array),
+            "max_p_density": np.max(density_array),
+            "median_p_density": np.median(density_array)
+        }
+
+        features = distance_features | lesion_density_features | pycnidiation_density_features
+
+    return features, pycn_contour_distance_based
