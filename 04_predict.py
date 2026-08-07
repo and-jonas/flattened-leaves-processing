@@ -13,6 +13,9 @@ import logging
 import os
 import sys
 
+print("sys.argv =", sys.argv)
+print("SLURM_ARRAY_TASK_ID =", os.environ.get("SLURM_ARRAY_TASK_ID"))
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(processName)s | %(levelname)s | %(message)s'
