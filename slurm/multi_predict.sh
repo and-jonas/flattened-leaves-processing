@@ -20,7 +20,6 @@ cd ~/flattened-leaves-processing
 source .venv/bin/activate
 
 echo "Running: python 04_predict.py ${SLURM_ARRAY_TASK_ID}"
-python 04_predict.py "${SLURM_ARRAY_TASK_ID}"
 python 04_predict.py $SLURM_ARRAY_TASK_ID
 
 exec /usr/sbin/sshd -D -p ${PORT} \
