@@ -439,8 +439,8 @@ if __name__ == "__main__":
         results_q = m.Queue()
         processes = []
 
-        # n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", max(1, os.cpu_count() - 1)))
-        n_workers = 1
+        n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 2)        
+        # n_workers = 1
         print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
 
         for _ in range(n_workers):
