@@ -457,16 +457,18 @@ if __name__ == "__main__":
         for _ in range(n_workers):
             jobs.put("STOP")
 
-        # collect results
-        count = 0
+        # collect results with progress bar
         total = len(jobs_list)
-        while count < total:
-            uid, ok, info = results_q.get()
-            count += 1
-            if ok:
-                print(f"✓ {uid} ({count}/{total}) saved_pairs={info.get('saved_pairs',0)}")
-            else:
-                print(f"✗ {uid}: {info} ({count}/{total})")
+        received = 0
+        with tqdm(total=total, desc="Processing series") as pbar:
+            while received < total:
+                uid, ok, info = results_q.get()
+                received += 1
+                if ok:
+                    print(f"✓ {uid} ({received}/{total}) saved_pairs={info.get('saved_pairs',0)}")
+                else:
+                    print(f"✗ {uid}: {info} ({received}/{total})")
+                pbar.update(1)
 
         for p in processes:
             p.join()
