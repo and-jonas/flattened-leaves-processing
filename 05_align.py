@@ -349,7 +349,7 @@ def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, 
         base1 = os.path.splitext(os.path.basename(series_img[i]))[0]
         base2 = os.path.splitext(os.path.basename(series_img[j]))[0]
         fname_img = f"{base1}-{base2}.png"
-        fname_mask = f"{base1}-{base2}_mask.png"
+        fname_mask = f"{base1}-{base2}.png"
         img_out_path = os.path.join(out_aligned_dir, fname_img)
         mask_out_path = os.path.join(out_masks_dir, fname_mask)
 

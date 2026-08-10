@@ -173,7 +173,7 @@ def get_pycn_features(mask, lesion_mask, contour, max_dist, bandwidth, kernel):
     # plt.show(block=True)
 
     # binarize pycnidia, multiply with lesion mask
-    pycnidia_binary = np.uint8(np.where(mask == 212, 1, 0) * lesion_mask / 255)
+    pycnidia_binary = np.uint8(np.where(mask == 5, 1, 0) * lesion_mask / 255)
 
     # pycnidia coordinates
     coords = np.where(pycnidia_binary == 1)
