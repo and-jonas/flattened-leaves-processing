@@ -13,35 +13,6 @@ from scipy import ndimage as ndi
 from multiprocessing import Pool, cpu_count
 import traceback
 
-
-base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-
-# # directories where masks/images are listed: individual images
-# path_seg_mask = base_path / "predictions/*/symptoms_seg/pred"
-# path_det_mask = base_path / "predictions/*/symptoms_det/pred"
-# path_rgb_img = base_path / "inference_crops/*"
-# directories where masks/images are listed: aligned images
-
-seg_masks = list(
-    (base_path / "aligned").glob("*/masks/masks/*.png")
-)
-
-det_masks = list(
-    (base_path / "aligned").glob("*/masks/masks/*.png")
-)
-
-rgb_imgs = list(
-    (base_path / "aligned").glob("*/images/aligned/*.png")
-)
-
-out_path = base_path / "metrics"
-leaf_data_path = out_path / "leaf"
-lesion_data_path = out_path / "lesion"
-
-for p in [out_path, leaf_data_path, lesion_data_path]:
-    p.mkdir(parents=True, exist_ok=True)
-
-
 def process_item(args):
     seg_p, det_p, rgb_p, aligned = args
     try:
@@ -211,7 +182,7 @@ def process_item(args):
         print(f"Error processing {seg_p}: {traceback.format_exc()}")
 
 
-def main():
+def main(aligned=False):
     # map seg/det/rgb by stem
     seg_map = {p.stem: p for p in seg_masks}
     det_map = {p.stem: p for p in det_masks}
@@ -224,7 +195,7 @@ def main():
         if rgb_p is None:
             print(f"No RGB for {stem}, skipping")
             continue
-        tasks.append((str(seg_p), str(det_p) if det_p is not None else None, str(rgb_p), True))  # False indicates not aligned
+        tasks.append((str(seg_p), str(det_p) if det_p is not None else None, str(rgb_p), aligned))  # False indicates not aligned
 
     if not tasks:
         print("No valid tasks to process.")
@@ -236,4 +207,26 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    # base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    base_path = Path(os.environ["SCRATCH"])
+
+    aligned = True  # set to False if using individual images instead of aligned images
+
+    if not aligned:
+        seg_masks = list((base_path / "predictions").glob("*/symptoms_seg/pred*.png"))
+        det_masks = list((base_path / "predictions").glob("*/symptoms_det/pred*.png"))
+        rgb_imgs = list((base_path / "inference_crops").glob("**/*.png"))
+    else:
+        seg_masks = list((base_path / "aligned").glob("*/masks/masks/*.png"))
+        det_masks = list((base_path / "aligned").glob("*/masks/masks/*.png"))
+        rgb_imgs = list((base_path / "aligned").glob("*/images/aligned/*.png"))
+
+    out_path = base_path / "metrics"
+    leaf_data_path = out_path / "leaf"
+    lesion_data_path = out_path / "lesion"
+
+    for p in [out_path, leaf_data_path, lesion_data_path]:
+        p.mkdir(parents=True, exist_ok=True)
+
+    main(aligned=aligned)
