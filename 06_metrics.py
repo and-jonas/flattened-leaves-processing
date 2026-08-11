@@ -187,9 +187,18 @@ def process_item(args):
         print(f"Processed {stem}")
 
     except Exception:
-        print(f"\nERROR processing {seg_p}", flush=True)
-        traceback.print_exc()
-        raise
+        # log exception to per-run errors.log and continue processing other items
+        try:
+            err_log = out_path / "errors.log"
+            with err_log.open("a", encoding="utf-8") as f:
+                f.write(f"ERROR processing {seg_p}\n")
+                traceback.print_exc(file=f)
+                f.write("\n")
+        except Exception:
+            # fallback to printing if logging fails
+            print(f"\nERROR processing {seg_p}", flush=True)
+            traceback.print_exc()
+        return
 
 def main(aligned=False):
     # map seg/det/rgb by stem
@@ -218,9 +227,9 @@ def main(aligned=False):
         print("No valid tasks to process.")
         return
 
-    n_proc = min(cpu_count()-2, len(tasks))
+    n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))  # when processing on Gamarello
     # n_proc = 1
-    with Pool(processes=n_proc) as pool:
+    with Pool(processes=n_workers) as pool:
         if tqdm is not None:
             for _ in tqdm(pool.imap_unordered(process_item, tasks), total=len(tasks), desc="Processing", unit="item"):
                 pass
@@ -231,8 +240,8 @@ def main(aligned=False):
 
 if __name__ == "__main__":
 
-    # base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    base_path = Path(os.environ["SCRATCH"])
+    base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # base_path = Path(os.environ["SCRATCH"])
 
     aligned = True  # set to False if using individual images instead of aligned images
 
