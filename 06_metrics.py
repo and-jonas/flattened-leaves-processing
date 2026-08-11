@@ -179,7 +179,9 @@ def process_item(args):
         print(f"Processed {stem}")
 
     except Exception:
-        print(f"Error processing {seg_p}: {traceback.format_exc()}")
+        print(f"\nERROR processing {seg_p}", flush=True)
+        traceback.print_exc()
+        raise
 
 def main(aligned=False):
     # map seg/det/rgb by stem
