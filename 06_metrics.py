@@ -14,11 +14,7 @@ from multiprocessing import Pool, cpu_count
 import traceback
 
 def process_item(args):
-    seg_p, det_p, rgb_p, aligned, leaf_data_path, lesion_data_path, out_path = args
-    # ensure paths are Path objects in worker processes
-    leaf_data_path = Path(leaf_data_path)
-    lesion_data_path = Path(lesion_data_path)
-    out_path = Path(out_path)
+    seg_p, det_p, rgb_p, aligned = args
     try:
         seg_path = Path(seg_p)
         stem = seg_path.stem
@@ -185,7 +181,6 @@ def process_item(args):
     except Exception:
         print(f"Error processing {seg_p}: {traceback.format_exc()}")
 
-
 def main(aligned=False):
     # map seg/det/rgb by stem
     seg_map = {p.stem: p for p in seg_masks}
@@ -199,15 +194,7 @@ def main(aligned=False):
         if rgb_p is None:
             print(f"No RGB for {stem}, skipping")
             continue
-        tasks.append((
-            str(seg_p),
-            str(det_p) if det_p is not None else None,
-            str(rgb_p),
-            aligned,
-            str(leaf_data_path),
-            str(lesion_data_path),
-            str(out_path)
-        ))  # include output paths so workers on Windows have them
+        tasks.append((str(seg_p), str(det_p) if det_p is not None else None, str(rgb_p), aligned))  # False indicates not aligned
 
     if not tasks:
         print("No valid tasks to process.")
