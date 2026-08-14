@@ -28,7 +28,7 @@ PARENT_OUTPUT_DIR = BASE_DIR / "02_CHWW001/1260/LeafImages/inference_crops"
 
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
-PARALLEL = False
+PARALLEL = True
 
 def make_inference_crop(args):
     img_path, input_dir, output_dir = args
@@ -150,7 +150,7 @@ def main():
 
     if PARALLEL:
         with ProcessPoolExecutor(max_workers=8) as executor:
-            results = executor.map(make_inference_crop, tasks[1:])
+            results = executor.map(make_inference_crop, tasks)
             for result in tqdm(results, total=len(tasks), desc="Processing images"):
                 if result is not None:
                     print(result)
