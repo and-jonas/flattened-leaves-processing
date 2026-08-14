@@ -46,7 +46,7 @@ pred = Predictor(config_name='flattened_leaves',
 # dir_to_process = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
 
 # from $SCRATCH to reduce I/O limitations on the server
-dir_to_process = Path(os.environ["SCRATCH"])
+dir_to_process = Path(os.environ["SCRATCH"]) / "02_CHWW001/1260/LeafImages"
 subdir = sys.argv[1]
 
 # predict
