@@ -14,21 +14,21 @@ import os
 # directories (local)
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/06_WW40/LeafImages")
-# PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/02_CHWW001/LeafImages")
-# PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/LeafImages")
+PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/1260/LeafImages/renamed")
+PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/1260/LeafImages/inference_crops")
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/corrected")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/colorcorrected/corrected")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/inference_crops")
 
-# directories (server)
-BASE_DIR = Path(os.environ["SCRATCH"])
-PARENT_INPUT_DIR = BASE_DIR / "colorcorrected/corrected"
-PARENT_OUTPUT_DIR = BASE_DIR / "inference_crops"
+# # directories (server)
+# BASE_DIR = Path(os.environ["SCRATCH"])
+# PARENT_INPUT_DIR = BASE_DIR / "colorcorrected/corrected"
+# PARENT_OUTPUT_DIR = BASE_DIR / "inference_crops"
 
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
-PARALLEL = True
+PARALLEL = False
 
 def make_inference_crop(args):
     img_path, input_dir, output_dir = args
@@ -42,13 +42,38 @@ def make_inference_crop(args):
     if img.shape[0] > img.shape[1]:
         img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
     
-    # pre-crop to remove backgrounde
+    # pre-crop to remove background
     img = img[1250:4750, :]
 
     # get leaf mask
     B, G, R = cv2.split(img.astype(np.float32))
     leaf_index = R + G - 2 * B
-    mask = leaf_index > 20
+    mask = leaf_index > -25
+
+    best_mask = None
+    best_score = np.inf
+
+    # lower threshold until we find a connected component with area close to 4 Mpx
+    for threshold in np.arange(20, -40, -20):
+        mask = leaf_index > threshold
+
+        # Connected components
+        n, labels, stats, centroids = cv2.connectedComponentsWithStats(
+            mask.astype(np.uint8), connectivity=8
+        )
+
+        for i in range(1, n):
+            area = stats[i, cv2.CC_STAT_AREA]
+
+            # Target leaf size = 4 Mpx
+            score = abs(area - 4_000_000)
+
+            if score < best_score:
+                best_score = score
+
+                best_mask = labels == i
+
+    mask = best_mask.astype(np.uint8)
 
     # get controid of foreground pixels
     ys, xs = np.where(mask)
@@ -101,6 +126,8 @@ def main():
         for d in jpeg_dirs
         for img_path in {p for pat in patterns for p in d.glob(pat)}
     ]
+
+    print(f"Found {len(tasks)} images in {len(jpeg_dirs)} directories.")
 
     if PARALLEL:
         with ProcessPoolExecutor(max_workers=8) as executor:
