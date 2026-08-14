@@ -14,17 +14,17 @@ import os
 # directories (local)
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/B_Data/06_WW40/LeafImages")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/06_WW40/LeafImages")
-PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/1260/LeafImages/renamed")
-PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/1260/LeafImages/inference_crops")
+# PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/1260/LeafImages/renamed")
+# PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/02_CHWW001/1260/LeafImages/inference_crops")
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/corrected")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
 # PARENT_INPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/colorcorrected/corrected")
 # PARENT_OUTPUT_DIR = Path(r"O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/inference_crops")
 
-# # directories (server)
-# BASE_DIR = Path(os.environ["SCRATCH"])
-# PARENT_INPUT_DIR = BASE_DIR / "colorcorrected/corrected"
-# PARENT_OUTPUT_DIR = BASE_DIR / "inference_crops"
+# directories (server)
+BASE_DIR = Path(os.environ["SCRATCH"])
+PARENT_INPUT_DIR = BASE_DIR / "02_CHWW001/1260/LeafImages/renamed"
+PARENT_OUTPUT_DIR = BASE_DIR / "02_CHWW001/1260/LeafImages/inference_crops"
 
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
@@ -48,32 +48,51 @@ def make_inference_crop(args):
     # get leaf mask
     B, G, R = cv2.split(img.astype(np.float32))
     leaf_index = R + G - 2 * B
-    mask = leaf_index > -25
 
-    best_mask = None
+    h, w = leaf_index.shape
+
+    # Right 2/3 of the image
+    x_start = w // 3
+    leaf_index_roi = leaf_index[:, x_start:]
+
+    # Lower threshold until we find a connected component with area close to 1.5 Mpx
     best_score = np.inf
+    best_threshold = None
 
-    # lower threshold until we find a connected component with area close to 4 Mpx
-    for threshold in np.arange(20, -40, -20):
-        mask = leaf_index > threshold
+    for threshold in np.arange(20, -80, -20):
+        mask_roi = leaf_index_roi > threshold
 
-        # Connected components
         n, labels, stats, centroids = cv2.connectedComponentsWithStats(
-            mask.astype(np.uint8), connectivity=8
+            mask_roi.astype(np.uint8), connectivity=8
         )
 
         for i in range(1, n):
             area = stats[i, cv2.CC_STAT_AREA]
 
-            # Target leaf size = 4 Mpx
-            score = abs(area - 4_000_000)
+            # Target leaf size = 1.5 Mpx
+            score = abs(area - 1_500_000)
 
             if score < best_score:
                 best_score = score
+                best_threshold = threshold
 
-                best_mask = labels == i
+    # Apply the selected threshold to the right 2/3
+    mask_roi = leaf_index_roi > best_threshold
 
-    mask = best_mask.astype(np.uint8)
+    # Keep only the largest connected component
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(
+        mask_roi.astype(np.uint8), connectivity=8
+    )
+
+    if n > 1:
+        largest_component = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+        mask_roi = (labels == largest_component).astype(np.uint8)
+    else:
+        mask_roi = np.zeros_like(mask_roi, dtype=np.uint8)
+
+    # Put the ROI mask back into the full image
+    mask = np.zeros_like(leaf_index, dtype=np.uint8)
+    mask[:, x_start:] = mask_roi
 
     # get controid of foreground pixels
     ys, xs = np.where(mask)
@@ -113,10 +132,10 @@ def main():
     if any(next(PARENT_INPUT_DIR.glob(pat), None) is not None for pat in patterns):
         jpeg_dirs.append(PARENT_INPUT_DIR)
 
-    # include any subdirectories that contain images
+    # include immediate subdirectories (not recursive) that contain images
     jpeg_dirs.extend(
         d
-        for d in PARENT_INPUT_DIR.rglob("*")
+        for d in PARENT_INPUT_DIR.iterdir()
         if d.is_dir()
         and any(next(d.glob(pat), None) is not None for pat in patterns)
     )
@@ -131,7 +150,7 @@ def main():
 
     if PARALLEL:
         with ProcessPoolExecutor(max_workers=8) as executor:
-            results = executor.map(make_inference_crop, tasks)
+            results = executor.map(make_inference_crop, tasks[1:])
             for result in tqdm(results, total=len(tasks), desc="Processing images"):
                 if result is not None:
                     print(result)
