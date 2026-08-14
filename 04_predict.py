@@ -49,10 +49,20 @@ pred = Predictor(config_name='flattened_leaves',
 dir_to_process = Path(os.environ["SCRATCH"]) / "02_CHWW001/1260/LeafImages"
 subdir = sys.argv[1]
 
-# predict
+# List all subdirectories
+subdirs = sorted(
+    p for p in (dir_to_process / "inference_crops").iterdir()
+    if p.is_dir()
+)
+
+# Select subdirectory based on SLURM array index
+subdir = subdirs[int(sys.argv[1])]
+
+print(f"Processing: {subdir.name}")
+
 pred.predict(
-    images_src=dir_to_process / "inference_crops"/ subdir, 
-    export_dst=dir_to_process / "predictions"/ subdir
+    images_src=subdir,
+    export_dst=dir_to_process / "predictions" / subdir.name
 )
 
 # visualize
