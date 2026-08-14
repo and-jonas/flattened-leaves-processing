@@ -11,11 +11,9 @@ importlib.reload(base_utils)
 import os
 from scipy import ndimage as ndi
 from multiprocessing import Pool, cpu_count
-try:
-    from tqdm import tqdm
-except Exception:
-    tqdm = None
+from tqdm import tqdm
 import traceback
+from matplotlib.colors import Normalize
 
 def process_item(args):
     seg_p, det_p, rgb_p, aligned, leaf_data_path, lesion_data_path, out_path = args
@@ -115,22 +113,40 @@ def process_item(args):
             resize_factor=5, bandwidth=25, kernel='gaussian'
         )
 
+        # Convert density to RGB colormap
+        # Normalize density ONLY for visualization
+        density_vis = Normalize(vmin=0,vmax=0.005, clip=True)(norm_d)
         overlay = rgb_img.copy()
-        if np.any(norm_d > 0):
-            levels = np.linspace(
-                np.percentile(norm_d[norm_d > 0], 94),
-                np.percentile(norm_d[norm_d > 0], 99.9),
-                5
-            )
-            cmap = plt.cm.cool
-            colors = cmap(np.linspace(0, 1, len(levels)))[:, :3]
-            colors = (colors * 255).astype(np.uint8)
+        density_color = plt.cm.plasma(density_vis)[:, :, :3]
+        density_color = (density_color * 255).astype(np.uint8)
 
-            for level, color in zip(levels, colors):
-                m_level = (norm_d >= level).astype(np.uint8)
-                cs, _ = cv2.findContours(m_level, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                color_bgr = tuple(int(c) for c in color[::-1])
-                cv2.drawContours(overlay, cs, -1, color_bgr, thickness=3)
+        # Overlay on original RGB image
+        alpha = 0.5
+
+        overlay = cv2.addWeighted(
+            overlay,
+            1 - alpha,
+            density_color,
+            alpha,
+            0
+        )
+
+        # overlay = rgb_img.copy()
+        # if np.any(norm_d > 0):
+        #     levels = np.linspace(
+        #         np.percentile(norm_d[norm_d > 0], 94),
+        #         np.percentile(norm_d[norm_d > 0], 99.9),
+        #         5
+        #     )
+        #     cmap = plt.cm.cool
+        #     colors = cmap(np.linspace(0, 1, len(levels)))[:, :3]
+        #     colors = (colors * 255).astype(np.uint8)
+
+        #     for level, color in zip(levels, colors):
+        #         m_level = (norm_d >= level).astype(np.uint8)
+        #         cs, _ = cv2.findContours(m_level, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        #         color_bgr = tuple(int(c) for c in color[::-1])
+        #         cv2.drawContours(overlay, cs, -1, color_bgr, thickness=3)
 
         cv2.imwrite(str(out_path / "pmap" / jpg_name), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
 
@@ -240,15 +256,15 @@ def main(aligned=False):
 
 if __name__ == "__main__":
 
-    # base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    base_path = Path(os.environ["SCRATCH"])
+    base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # base_path = Path(os.environ["SCRATCH"])
 
     aligned = False  # set to False if using individual images instead of aligned images
 
     if not aligned:
         seg_masks = list((base_path / "predictions").glob("*/symptoms_seg/pred/*.png"))
         det_masks = list((base_path / "predictions").glob("*/symptoms_det/pred/*.png"))
-        rgb_imgs = list((base_path / "inference_crops").glob("**/*.png"))
+        rgb_imgs = list((base_path / "inference_crops").glob("*/*.png"))
     else:
         seg_masks = list((base_path / "aligned").glob("*/masks/masks/*.png"))
         det_masks = list((base_path / "aligned").glob("*/masks/masks/*.png"))

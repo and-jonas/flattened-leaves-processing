@@ -150,18 +150,16 @@ def get_pycnidia_maps(mask, resize_factor, bandwidth, kernel):
         log_density = kde.score_samples(grid_coords)
         density = np.exp(log_density).reshape(height, width)
         density *= len(coordinates)  # Scale density by the total number of points
-        density_rsz = cv2.resize(density, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_NEAREST)
-        norm = Normalize(vmin=0, vmax=0.004) # max density value was 0.398 across entire data set, but different dist
-        normalized_density = norm(density_rsz)
+        density_rsz = cv2.resize(density, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_LINEAR)
 
         # Map the normalized density to a colormap
         colormap = plt.cm.plasma
-        color_image = colormap(normalized_density)
+        color_image = colormap(density_rsz)
 
         # Remove the alpha channel and scale to 0-255 for saving
         color_image_density = (color_image[:, :, :3] * 255).astype(np.uint8)
 
-    return color_image_distance, color_image_density, normalized_density
+    return color_image_distance, color_image_density, density_rsz
 
 def get_pycn_features(mask, lesion_mask, contour, max_dist, bandwidth, kernel):
 
