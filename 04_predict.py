@@ -67,9 +67,9 @@ pred.predict(
 
 # visualize
 vis = FlattenedVisualizer(
-    src_root=dir_to_process / "predictions"/ subdir, 
-    rgb_root=dir_to_process / "inference_crops"/ subdir, 
-    export_root=dir_to_process / "predictions"/ subdir
+    src_root=dir_to_process / "predictions"/ subdir.name,
+    rgb_root=subdir,
+    export_root=dir_to_process / "predictions"/ subdir.name
 )
 vis.visualize()
 

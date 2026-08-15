@@ -2,8 +2,8 @@
 
 #SBATCH --job-name=sshd
 #SBATCH --partition=gpu
-#SBATCH --array=1-5%2
-#SBATCH --gpus=1
+#SBATCH --array=0-5%2
+#SBATCH --gpus=2
 #SBATCH --time=10:00:00
 #SBATCH --output=%x_%A_%a_%N.log
 #SBATCH --mem=8G
@@ -21,8 +21,3 @@ source .venv/bin/activate
 
 echo "Running: python 04_predict.py ${SLURM_ARRAY_TASK_ID}"
 python 04_predict.py $SLURM_ARRAY_TASK_ID
-
-exec /usr/sbin/sshd -D -p ${PORT} \
-  -f /dev/null \
-  -h ${HOME}/.ssh/sshd_host_key \
-  -o AuthorizedKeysFile=${HOME}/.ssh/authorized_keys
