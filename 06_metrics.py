@@ -63,7 +63,10 @@ def process_item(args):
         l_mask = cv2.morphologyEx(l_mask, cv2.MORPH_DILATE, kernel, iterations=1)
         l_mask = np.where(l_mask, 255, 0).astype("uint8")
 
+        # ----------------------------------------------------------------------------
         # leaf statistics
+        # ----------------------------------------------------------------------------
+
         la_tot = len(np.where(mask != 0)[0])
         la_damaged = len(np.where((mask != 0) & (mask != 1))[0])
         la_healthy = len(np.where(mask == 1)[0])
@@ -81,6 +84,30 @@ def process_item(args):
         pycn_density = n_pycn / (la_tot - la_insect) if (la_tot - la_insect) > 0 else 0
         rust_density = n_rust / (la_tot - la_insect) if (la_tot - la_insect) > 0 else 0
 
+        # get pcnidia density
+        pycn_distmap, pycn_dmap, norm_d = base_utils.get_pycnidia_maps(
+            mask=mask,
+            resize_factor=5, bandwidth=25, kernel='gaussian'
+        )
+
+        # get pycnidiation area
+        thresholds = [0.0001, 0.0005, 0.001]
+        plap = {}
+        for t in thresholds:
+            mask = np.where(norm_d >= t, 1, 0)
+            plap[t] = len(np.where(norm_d >= t)[0]) / (la_tot - la_insect) if (la_tot - la_insect) > 0 else 0
+
+        # Convert density to RGB colormap
+        density_vis = Normalize(vmin=0,vmax=0.005, clip=True)(norm_d)
+        overlay = rgb_img.copy()
+        density_color = plt.cm.plasma(density_vis)[:, :, :3]
+        density_color = (density_color * 255).astype(np.uint8)
+
+        # Overlay on original RGB image
+        alpha = 0.5
+        overlay = cv2.addWeighted(overlay, 1 - alpha, density_color, alpha, 0)
+        cv2.imwrite(str(out_path / "pmap" / jpg_name), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+
         leaf_data = [{
             'la_tot': la_tot,
             'la_damaged': la_damaged,
@@ -93,6 +120,9 @@ def process_item(args):
             'n_rust': n_rust,
             'n_lesion': n_lesion,
             'placl': placl,
+            'plap@0.0001': plap[0.0001],
+            'plap@0.0005': plap[0.0005],
+            'plap@0.001': plap[0.001],
             'pycn_density': pycn_density,
             'rust_density': rust_density
         }]
@@ -103,53 +133,11 @@ def process_item(args):
 
         pd.DataFrame(leaf_data).to_csv(leaf_data_path / csv_name, index=False)
 
+        # ----------------------------------------------------------------------------
         # lesion analysis
+        # ----------------------------------------------------------------------------
+
         lesion_data = []
-        mask_invert = np.bitwise_not(l_mask)
-        distance_invert = ndi.distance_transform_edt(mask_invert)
-
-        pycn_distmap, pycn_dmap, norm_d = base_utils.get_pycnidia_maps(
-            mask=mask,
-            resize_factor=5, bandwidth=25, kernel='gaussian'
-        )
-
-        # Convert density to RGB colormap
-        # Normalize density ONLY for visualization
-        density_vis = Normalize(vmin=0,vmax=0.005, clip=True)(norm_d)
-        overlay = rgb_img.copy()
-        density_color = plt.cm.plasma(density_vis)[:, :, :3]
-        density_color = (density_color * 255).astype(np.uint8)
-
-        # Overlay on original RGB image
-        alpha = 0.5
-
-        overlay = cv2.addWeighted(
-            overlay,
-            1 - alpha,
-            density_color,
-            alpha,
-            0
-        )
-
-        # overlay = rgb_img.copy()
-        # if np.any(norm_d > 0):
-        #     levels = np.linspace(
-        #         np.percentile(norm_d[norm_d > 0], 94),
-        #         np.percentile(norm_d[norm_d > 0], 99.9),
-        #         5
-        #     )
-        #     cmap = plt.cm.cool
-        #     colors = cmap(np.linspace(0, 1, len(levels)))[:, :3]
-        #     colors = (colors * 255).astype(np.uint8)
-
-        #     for level, color in zip(levels, colors):
-        #         m_level = (norm_d >= level).astype(np.uint8)
-        #         cs, _ = cv2.findContours(m_level, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        #         color_bgr = tuple(int(c) for c in color[::-1])
-        #         cv2.drawContours(overlay, cs, -1, color_bgr, thickness=3)
-
-        cv2.imwrite(str(out_path / "pmap" / jpg_name), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
-
         instance_mask = np.zeros_like(mask)
         for idx, contour in enumerate(contours):
             rect = cv2.boundingRect(contour)
@@ -173,13 +161,6 @@ def process_item(args):
             rust_mask = np.where(roi, mask, 0)
             n_rust_loc = len(np.where(rust_mask == 6)[0])
             rust_density_lesion = n_rust_loc / contour_area
-
-            # pycn_features, pycn_contour = base_utils.get_pycn_features(
-            #     mask=mask,
-            #     lesion_mask=roi,
-            #     contour=contour,
-            #     max_dist=50, bandwidth=25, kernel='gaussian'
-            # )
 
             ldat = {'area': contour_area,
                     'perimeter': contour_perimeter,
@@ -244,7 +225,6 @@ def main(aligned=False):
         return
 
     n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))  # when processing on Gamarello
-    # n_proc = 1
     with Pool(processes=n_workers) as pool:
         if tqdm is not None:
             for _ in tqdm(pool.imap_unordered(process_item, tasks), total=len(tasks), desc="Processing", unit="item"):
