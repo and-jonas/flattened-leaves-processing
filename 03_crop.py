@@ -23,8 +23,8 @@ import os
 
 # directories (server)
 BASE_DIR = Path(os.environ["SCRATCH"])
-PARENT_INPUT_DIR = BASE_DIR / "02_CHWW001/1260/LeafImages/renamed"
-PARENT_OUTPUT_DIR = BASE_DIR / "02_CHWW001/1260/LeafImages/inference_crops"
+PARENT_INPUT_DIR = BASE_DIR / "06_WW040/LeafImages/1260/renamed"
+PARENT_OUTPUT_DIR = BASE_DIR / "06_WW040/LeafImages/1260/inference_crops"
 
 CROP_WIDTH = 8192
 CROP_HEIGHT = 2048
