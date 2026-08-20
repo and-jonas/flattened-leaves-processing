@@ -224,7 +224,7 @@ def main(aligned=False):
         print("No valid tasks to process.")
         return
 
-    n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))  # when processing on Gamarello
+    n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", 1)) - 2)  # leave 2 CPUs free
     with Pool(processes=n_workers) as pool:
         if tqdm is not None:
             for _ in tqdm(pool.imap_unordered(process_item, tasks), total=len(tasks), desc="Processing", unit="item"):
