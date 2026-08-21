@@ -94,8 +94,8 @@ def process_item(args):
         thresholds = [0.0001, 0.0005, 0.001]
         plap = {}
         for t in thresholds:
-            mask = np.where(norm_d >= t, 1, 0)
-            plap[t] = len(np.where(norm_d >= t)[0]) / (la_tot - la_insect) if (la_tot - la_insect) > 0 else 0
+            plap_mask = (l_mask) & (np.where(norm_d >= t, 1, 0))
+            plap[t] = len(np.where(plap_mask)[0]) / (la_tot - la_insect) if (la_tot - la_insect) > 0 else 0
 
         # Convert density to RGB colormap
         density_vis = Normalize(vmin=0,vmax=0.005, clip=True)(norm_d)
@@ -236,8 +236,8 @@ def main(aligned=False):
 
 if __name__ == "__main__":
 
-    # base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    base_path = Path(os.environ["SCRATCH"])
+    base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # base_path = Path(os.environ["SCRATCH"])
 
     aligned = False  # set to False if using individual images instead of aligned images
 
