@@ -534,9 +534,13 @@ if __name__ == "__main__":
     subdir = sys.argv[1]
     # subdir = "2"
 
+    print(subdir)
+
     dir_img = BASE_DIR / "inference_crops" / subdir 
     dir_msk_seg = BASE_DIR / "predictions" / subdir / "symptoms_seg" / "pred"
     dir_msk_det = BASE_DIR / "predictions" / subdir / "symptoms_det" / "pred"
+
+    print(dir_img)
 
     # output directories for aligned results
     out_images_dir = BASE_DIR / "aligned" / subdir / "images"
