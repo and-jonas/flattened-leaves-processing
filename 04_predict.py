@@ -21,23 +21,27 @@ logging.basicConfig(
     format='%(asctime)s | %(processName)s | %(levelname)s | %(message)s'
 )
 
-# pre-download models and test image
-urls = get_model_urls_for_config(config_name='flattened_leaves', config_path='config')
-downloaded = download_models_for_config()
-downloaded = download_models_for_config(config_name="canopy_landscape")
-downloaded = download_models_for_config(config_name="flattened_leaves")
-downloaded = download_test_images(root="test/images")
+# # pre-download models and test image
+# urls = get_model_urls_for_config(config_name='flattened_leaves', config_path='config')
+# downloaded = download_models_for_config()
+# downloaded = download_models_for_config(config_name="canopy_landscape")
+# downloaded = download_models_for_config(config_name="flattened_leaves")
+# downloaded = download_test_images(root="test/images")
 
 # # test models (requires gpu)
 # models.test()
 
 # intialize predictor
 pred = Predictor(config_name='flattened_leaves',
-                 symptoms_seg_params={'model_name': 'tracking_latest',
-                                      'use_gpu': True},
-                 symptoms_det_params={'model_name': 'tracking_latest',
-                                      'use_gpu': True,
-                                      'keypoints_thresh': 0.18}
+                 symptoms_seg_params={
+                     'model_name': '/home/f89601470/model-training/experiments/symptoms/final/full_dataset/'
+                     'sympathique_segmentation/mit_b3/seed_42/final/version_0/checkpoints/last.torchscript',
+                     'use_gpu': True},
+                 symptoms_det_params={
+                     'model_name': '/home/f89601470/model-training/experiments/symptoms/final/full_dataset/'
+                     'sympathique_keypoints/yolo26l/seed_42/final/weights/last.pt',
+                     'use_gpu': True,
+                     'keypoints_thresh': 0.3}
 )
 
 # list directories to process
@@ -46,8 +50,9 @@ pred = Predictor(config_name='flattened_leaves',
 # dir_to_process = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf/renamed")
 
 # from $SCRATCH to reduce I/O limitations on the server
-dir_to_process = Path(os.environ["SCRATCH"]) / "02_CHWW001/1260/LeafImages"
-subdir = sys.argv[1]
+# dir_to_process = Path(os.environ["SCRATCH"]) / "02_CHWW001/1260/LeafImages"
+dir_to_process = Path(os.environ["SCRATCH"]) / "03_PreDiMix/"
+# dir_to_process = Path(os.environ["SCRATCH"]) / "00_test/"
 
 # List all subdirectories
 subdirs = sorted(
@@ -56,14 +61,15 @@ subdirs = sorted(
 )
 
 # Select subdirectory based on SLURM array index
-subdir = subdirs[int(sys.argv[1])]
+idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+subdir = subdirs[idx]
 
 print(f"Processing: {subdir.name}")
 
-pred.predict(
-    images_src=subdir,
-    export_dst=dir_to_process / "predictions" / subdir.name
-)
+# pred.predict(
+#     images_src=subdir,
+#     export_dst=dir_to_process / "predictions" / subdir.name
+# )
 
 # visualize
 vis = FlattenedVisualizer(

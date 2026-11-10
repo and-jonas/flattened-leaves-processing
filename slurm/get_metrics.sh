@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=sshd
-#SBATCH --time=10:00:00
+#SBATCH --time=16:00:00
 #SBATCH --output=%x_%j_%N.log
 #SBATCH --mem-per-cpu=8G
 #SBATCH --cpus-per-task=12
