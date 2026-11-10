@@ -542,9 +542,14 @@ if __name__ == "__main__":
 
     print(dir_img)
 
-    # output directories for aligned results
-    out_images_dir = BASE_DIR / "aligned" / subdir / "images"
-    out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
+    # # output directories for aligned results
+    # out_images_dir = BASE_DIR / "aligned" / subdir / "images"
+    # out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
+
+    # for testing
+    OUT_DIR = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    out_images_dir = OUT_DIR / "aligned" / subdir / "images"
+    out_masks_dir = OUT_DIR / "aligned" / subdir / "masks"
 
     # collect all series for images and masks
     all_series_img = get_series(path_images=os.path.join(dir_img))
