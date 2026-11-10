@@ -9,7 +9,8 @@ logging.basicConfig(
     force=True,
 )
 
-dir_to_process = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
+# dir_to_process = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
+dir_to_process = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
 
 subdirs = sorted(
     p for p in (dir_to_process / "inference_crops").iterdir()
