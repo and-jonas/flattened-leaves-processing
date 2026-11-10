@@ -28,6 +28,6 @@ for i, subdir in enumerate(subdirs, 1):
         export_root=dir_to_process / "predictions" / subdir.name,
     )
 
-    vis.visualize(parallel=True, max_workers=4)
+    vis.visualize(parallel=True, max_workers=16)
 
 logging.info("Visualization completed")

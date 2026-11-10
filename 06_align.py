@@ -3,6 +3,8 @@ import glob
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from scipy.ndimage import median_filter, gaussian_filter1d
+
 import numpy as np
 from natsort import natsorted
 import cv2
@@ -97,26 +99,166 @@ def warp_to_reference(src, M, ref_shape, is_mask=False):
         warped = warped.astype(src_dtype)
     return warped
 
-def get_leaf_mask(mask, min_area=120000):
+# def get_leaf_mask(mask, min_area=120000):
+#     """
+#     Get a cleaned binary leaf mask from a multiclass segmentation mask.
+#     """
+
+#     leaf = (mask > 0).astype(np.uint8)
+
+#     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+#         leaf,
+#         connectivity=8
+#     )
+
+#     cleaned = np.zeros_like(leaf)
+
+#     for label in range(1, num_labels):  # skip background
+#         area = stats[label, cv2.CC_STAT_AREA]
+#         if area >= min_area:
+#             cleaned[labels == label] = 1
+
+#     return cleaned
+
+def get_leaf_mask(
+    mask,
+    min_area=120000,
+    median_size=4001,
+    sigma=500,
+):
     """
-    Get a cleaned binary leaf mask from a multiclass segmentation mask.
+    Extract the largest leaf component and smooth its boundaries
+    along the major PCA axis.
+
+    Parameters
+    ----------
+    mask : ndarray
+        Multiclass segmentation mask.
+    min_area : int
+        Minimum area of the leaf component.
+    median_size : int
+        Median filter window along the leaf axis, in pixels.
+    sigma : float
+        Gaussian smoothing sigma along the leaf axis, in pixels.
+
+    Returns
+    -------
+    ndarray
+        Cleaned binary mask (uint8, values 0 and 1).
     """
 
     leaf = (mask > 0).astype(np.uint8)
 
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        leaf,
-        connectivity=8
+    # 1. Largest connected component
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(
+        leaf, connectivity=8
+    )
+    cleaned = np.zeros_like(leaf)
+    largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+    leaf = (labels == largest)
+
+    # 2. Estimate major axis using PCA
+    y, x = np.nonzero(leaf)
+    coords = np.column_stack((x, y)).astype(np.float64)
+
+    center = coords.mean(axis=0)
+    centered = coords - center
+
+    _, _, vt = np.linalg.svd(centered, full_matrices=False)
+
+    major = vt[0]
+    minor = vt[1]
+
+    # 3. Project foreground pixels onto PCA axes
+    longitudinal = centered @ major
+    transverse = centered @ minor
+
+    # Bin by longitudinal position
+    t_min = np.floor(longitudinal.min())
+    t_max = np.ceil(longitudinal.max())
+
+    bins = np.arange(t_min, t_max + 2)
+    idx = np.clip(
+        np.searchsorted(bins, longitudinal, side="right") - 1,
+        0,
+        len(bins) - 2
     )
 
-    cleaned = np.zeros_like(leaf)
+    n_bins = len(bins) - 1
 
-    for label in range(1, num_labels):  # skip background
-        area = stats[label, cv2.CC_STAT_AREA]
-        if area >= min_area:
-            cleaned[labels == label] = 1
+    lower = np.full(n_bins, np.inf)
+    upper = np.full(n_bins, -np.inf)
 
-    return cleaned
+    np.minimum.at(lower, idx, transverse)
+    np.maximum.at(upper, idx, transverse)
+
+    # Fill missing bins by interpolation
+    positions = np.arange(n_bins)
+    valid = np.isfinite(lower) & np.isfinite(upper)
+
+    if valid.sum() < 2:
+        return leaf.astype(np.uint8)
+
+    lower = np.interp(positions, positions[valid], lower[valid])
+    upper = np.interp(positions, positions[valid], upper[valid])
+
+    # 4. Smooth both boundaries
+    lower_smooth = gaussian_filter1d(
+        median_filter(lower, size=median_size),
+        sigma=sigma
+    )
+
+    upper_smooth = gaussian_filter1d(
+        median_filter(upper, size=median_size),
+        sigma=sigma
+    )
+
+    # move boundaries inward to avoid including background pixels at leaf tips
+    margin = 100
+    lower_smooth += margin
+    upper_smooth -= margin
+
+    # Truncate leaf extremities
+    width = upper_smooth - lower_smooth
+
+    trim_fraction = 0.05  # Remove 5% from each end
+
+    start = int(len(width) * trim_fraction)
+    end = int(len(width) * (1 - trim_fraction))
+
+    valid_length = np.zeros(len(width), dtype=bool)
+    valid_length[start:end] = True
+
+    # Reconstruct mask using PCA coordinates
+    h, w = mask.shape[:2]
+    yy, xx = np.indices((h, w))
+
+    pixels = np.column_stack((xx.ravel(), yy.ravel())).astype(np.float64)
+    pixels -= center
+
+    t = pixels @ major
+    s = pixels @ minor
+
+    # Use same longitudinal bins as boundary estimation
+    idx = np.floor(t - t_min).astype(int)
+
+    valid = (idx >= 0) & (idx < n_bins)
+
+    keep = np.zeros(len(idx), dtype=bool)
+
+    keep[valid] = (
+        (s[valid] >= lower_smooth[idx[valid]]) &
+        (s[valid] <= upper_smooth[idx[valid]]) &
+        valid_length[idx[valid]]
+    )
+
+    cleaned = keep.reshape(h, w).astype(np.uint8)
+
+    # Never include pixels outside the original detected leaf
+    cleaned_intersect = cleaned & leaf.astype(bool)
+
+    return cleaned_intersect.astype(np.uint8)
+
 
 def get_stitch_geometry(img1, img2, M):
     """Compute stitch canvas geometry for two images and affine transform.
@@ -390,6 +532,7 @@ if __name__ == "__main__":
     # BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     BASE_DIR = Path(os.environ["SCRATCH"])
     subdir = sys.argv[1]
+    # subdir = "2"
 
     dir_img = BASE_DIR / "inference_crops" / subdir 
     dir_msk_seg = BASE_DIR / "predictions" / subdir / "symptoms_seg" / "pred"
@@ -404,10 +547,11 @@ if __name__ == "__main__":
     all_series_msk_seg = get_series(path_images=os.path.join(dir_msk_seg))
     all_series_msk_det = get_series(path_images=os.path.join(dir_msk_det))
 
-    # optional: filter series by pattern
-    # PATTERN = "CH13063920260606"
+    # # optional: filter series by pattern
+    # PATTERN = "CH13063920260667"
     # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
-    # all_series_msk = [s for s in all_series_msk if any(PATTERN in os.path.basename(p) for p in s)]
+    # all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
+    # all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
 
     # build mask lookups by uid for segmentation and detection masks
     mask_lookup_seg = { _uid_from_path(s[0]): s for s in all_series_msk_seg if s }
@@ -439,8 +583,8 @@ if __name__ == "__main__":
         results_q = m.Queue()
         processes = []
 
-        n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 2)        
-        # n_workers = 1
+        # n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 2)        
+        n_workers = 1
         print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
 
         for _ in range(n_workers):
