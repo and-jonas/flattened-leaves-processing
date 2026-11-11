@@ -31,18 +31,18 @@ logging.basicConfig(
 # # test models (requires gpu)
 # models.test()
 
-# # intialize predictor
-# pred = Predictor(config_name='flattened_leaves',
-#                  symptoms_seg_params={
-#                      'model_name': '/home/f89601470/model-training/experiments/symptoms/final/full_dataset/'
-#                      'sympathique_segmentation/mit_b3/seed_42/final/version_0/checkpoints/last.torchscript',
-#                      'use_gpu': True},
-#                  symptoms_det_params={
-#                      'model_name': '/home/f89601470/model-training/experiments/symptoms/final/full_dataset/'
-#                      'sympathique_keypoints/yolo26l/seed_42/final/weights/last.pt',
-#                      'use_gpu': True,
-#                      'keypoints_thresh': 0.3}
-# )
+# intialize predictor
+pred = Predictor(config_name='flattened_leaves',
+                 symptoms_seg_params={
+                     'model_name': '/home/f89601470/model-training/experiments/symptoms/final/full_dataset/'
+                     'sympathique_segmentation/mit_b3/seed_42/final/version_0/checkpoints/last.torchscript',
+                     'use_gpu': True},
+                 symptoms_det_params={
+                     'model_name': '/home/f89601470/model-training/experiments/symptoms/final/full_dataset/'
+                     'sympathique_keypoints/yolo26l/seed_42/final/weights/last.pt',
+                     'use_gpu': True,
+                     'keypoints_thresh': 0.3}
+)
 
 # list directories to process
 # dir_to_process = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/WW40/1260/test")
@@ -66,18 +66,19 @@ subdir = subdirs[idx]
 
 print(f"Processing: {subdir.name}")
 
-# pred.predict(
-#     images_src=subdir,
-#     export_dst=dir_to_process / "predictions" / subdir.name
-# )
-
-# visualize
-vis = FlattenedVisualizer(
-    src_root=dir_to_process / "predictions"/ subdir.name,
-    rgb_root=subdir,
-    export_root=dir_to_process / "predictions"/ subdir.name
+pred.predict(
+    images_src=subdir,
+    export_dst=dir_to_process / "predictions" / subdir.name,
+    on_output_exists = "skip"
 )
-vis.visualize()
+
+# # visualize
+# vis = FlattenedVisualizer(
+#     src_root=dir_to_process / "predictions"/ subdir.name,
+#     rgb_root=subdir,
+#     export_root=dir_to_process / "predictions"/ subdir.name
+# )
+# vis.visualize()
 
 # # loop over directories
 # # predict and visualize

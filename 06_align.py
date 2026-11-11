@@ -123,7 +123,7 @@ def warp_to_reference(src, M, ref_shape, is_mask=False):
 def get_leaf_mask(
     mask,
     min_area=120000,
-    median_size=4001,
+    median_size=3001,
     sigma=500,
 ):
     """
@@ -256,6 +256,23 @@ def get_leaf_mask(
 
     # Never include pixels outside the original detected leaf
     cleaned_intersect = cleaned & leaf.astype(bool)
+
+    fig, axes = plt.subplots(3, 1, figsize=(18, 9), sharex=True, sharey=True)
+
+    axes[0].imshow(leaf, cmap="gray")
+    axes[0].set_title("Original leaf mask")
+
+    axes[1].imshow(cleaned, cmap="gray")
+    axes[1].set_title("Smoothed PCA mask (before intersection)")
+
+    axes[2].imshow(cleaned_intersect, cmap="gray")
+    axes[2].set_title("Final mask (after intersection)")
+
+    for ax in axes:
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()
 
     return cleaned_intersect.astype(np.uint8)
 
@@ -529,10 +546,10 @@ def _worker_align(jobs, results, out_images_dir, out_masks_dir):
 if __name__ == "__main__":
 
     # directories
-    # BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    BASE_DIR = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
-    subdir = sys.argv[1]
-    # subdir = "2"
+    BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # BASE_DIR = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
+    # subdir = sys.argv[1]
+    subdir = "2"
 
     print(subdir)
 
@@ -542,14 +559,14 @@ if __name__ == "__main__":
 
     print(dir_img)
 
-    # # output directories for aligned results
-    # out_images_dir = BASE_DIR / "aligned" / subdir / "images"
-    # out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
+    # output directories for aligned results
+    out_images_dir = BASE_DIR / "aligned" / subdir / "images"
+    out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
 
-    # for testing
-    OUT_DIR = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    out_images_dir = OUT_DIR / "aligned" / subdir / "images"
-    out_masks_dir = OUT_DIR / "aligned" / subdir / "masks"
+    # # for testing
+    # OUT_DIR = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    # out_images_dir = OUT_DIR / "aligned" / subdir / "images"
+    # out_masks_dir = OUT_DIR / "aligned" / subdir / "masks"
 
     # collect all series for images and masks
     all_series_img = get_series(path_images=os.path.join(dir_img))
