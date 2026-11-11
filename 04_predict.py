@@ -64,6 +64,9 @@ subdirs = sorted(
 idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 subdir = subdirs[idx]
 
+# temporary hardcoded subdirectory for testing
+subdir = dir_to_process / "inference_crops" / "3"
+
 print(f"Processing: {subdir.name}")
 
 pred.predict(
