@@ -37,6 +37,19 @@ def get_series(path_images: str, leaf_uid: Optional[str] = None) -> List[List[st
     images: List[str] = []
     for ext in exts:
         images.extend(glob.glob(f"{path_images}/*{ext}"))
+
+    # Deduplicate paths (Windows globbing is case-insensitive and can return duplicates
+    # when both upper/lower-case extensions are listed).
+    deduped_images: List[str] = []
+    seen: set = set()
+    for p in images:
+        key = os.path.normcase(os.path.normpath(p))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_images.append(p)
+    images = deduped_images
+
     images = natsorted(images)
 
     # token used to group images into a time series
@@ -123,8 +136,9 @@ def warp_to_reference(src, M, ref_shape, is_mask=False):
 def get_leaf_mask(
     mask,
     min_area=120000,
-    median_size=3001,
-    sigma=500,
+    median_size=1201,
+    sigma=400,
+    overlay_savepath: Optional[str] = None,
 ):
     """
     Extract the largest leaf component and smooth its boundaries
@@ -213,11 +227,6 @@ def get_leaf_mask(
         sigma=sigma
     )
 
-    # move boundaries inward to avoid including background pixels at leaf tips
-    margin = 100
-    lower_smooth += margin
-    upper_smooth -= margin
-
     # Truncate leaf extremities
     width = upper_smooth - lower_smooth
 
@@ -228,6 +237,56 @@ def get_leaf_mask(
 
     valid_length = np.zeros(len(width), dtype=bool)
     valid_length[start:end] = True
+
+    # Transform smoothed PCA boundaries back to image coordinates
+    t_profile = positions + t_min + 0.5
+
+    lower_xy = (
+        center
+        + t_profile[:, None] * major
+        + lower_smooth[:, None] * minor
+    )
+
+    upper_xy = (
+        center
+        + t_profile[:, None] * major
+        + upper_smooth[:, None] * minor
+    )
+
+    fig, ax = plt.subplots(figsize=(18, 6))
+
+    ax.imshow(leaf, cmap="gray")
+
+    ax.plot(
+        lower_xy[start:end, 0],
+        lower_xy[start:end, 1],
+        color="red",
+        linewidth=2,
+        label="Lower boundary"
+    )
+
+    ax.plot(
+        upper_xy[start:end, 0],
+        upper_xy[start:end, 1],
+        color="cyan",
+        linewidth=2,
+        label="Upper boundary"
+    )
+
+    ax.legend()
+    ax.axis("off")
+    plt.tight_layout()
+    if overlay_savepath is not None:
+        os.makedirs(os.path.dirname(overlay_savepath), exist_ok=True)
+        fig.savefig(overlay_savepath, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+    # move boundaries inward to avoid including background pixels at leaf tips
+    margin = 100
+    lower_smooth += margin
+    upper_smooth -= margin
 
     # Reconstruct mask using PCA coordinates
     h, w = mask.shape[:2]
@@ -256,23 +315,6 @@ def get_leaf_mask(
 
     # Never include pixels outside the original detected leaf
     cleaned_intersect = cleaned & leaf.astype(bool)
-
-    fig, axes = plt.subplots(3, 1, figsize=(18, 9), sharex=True, sharey=True)
-
-    axes[0].imshow(leaf, cmap="gray")
-    axes[0].set_title("Original leaf mask")
-
-    axes[1].imshow(cleaned, cmap="gray")
-    axes[1].set_title("Smoothed PCA mask (before intersection)")
-
-    axes[2].imshow(cleaned_intersect, cmap="gray")
-    axes[2].set_title("Final mask (after intersection)")
-
-    for ax in axes:
-        ax.axis("off")
-
-    plt.tight_layout()
-    plt.show()
 
     return cleaned_intersect.astype(np.uint8)
 
@@ -416,7 +458,7 @@ def plot_inlier_matches(img1, img2, kp1, kp2, matches, inliers_mask, scale=0.5, 
     else:
         plt.show()
 
-def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, out_matches_dir, out_masks_dir):
+def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, out_matches_dir, out_masks_dir, out_overlays_dir):
     """Process a single leaf series: detect features, match, stitch and save outputs.
 
     `series_img`, `series_msk_seg`, and `series_msk_det` are lists of file paths (strings).
@@ -432,8 +474,15 @@ def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, 
     img = [read_image(p, mode="rgb") for p in series_img]
     msk_seg = [read_image(p, mode="mask") for p in series_msk_seg]
     msk_det = [read_image(p, mode="mask") for p in series_msk_det]
-    # get leaf masks
-    leaf_masks = [get_leaf_mask(m) for m in msk_seg]
+
+    os.makedirs(out_overlays_dir, exist_ok=True)
+
+    # get leaf masks and save boundary overlays
+    leaf_masks: List[np.ndarray] = []
+    for mask_arr, mask_path in zip(msk_seg, series_msk_seg):
+        base = os.path.splitext(os.path.basename(mask_path))[0]
+        overlay_path = os.path.join(out_overlays_dir, f"{base}_overlay.png")
+        leaf_masks.append(get_leaf_mask(mask_arr, overlay_savepath=overlay_path))
     # get combined masks
     msk = [np.where(det > 0, det + 4, seg) for seg, det in zip(msk_seg, msk_det)]
 
@@ -457,7 +506,7 @@ def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, 
         matches = bf.knnMatch(des1, des2, k=2)
         # Lowe ratio test
         good = [m for m, n in matches if m.distance < 0.70 * n.distance]
-        if len(good) < 35:
+        if len(good) < 25:
             continue
         pts1 = np.float32([features[i]["kp"][m.queryIdx].pt for m in good])
         pts2 = np.float32([features[i + 1]["kp"][m.trainIdx].pt for m in good])
@@ -523,7 +572,7 @@ def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, 
     return {"uid": uid, "status": "ok", "saved_pairs": saved}
 
 
-def _worker_align(jobs, results, out_images_dir, out_masks_dir):
+def _worker_align(jobs, results, out_images_dir, out_masks_dir, out_overlays_dir):
     """Worker process: consume series jobs and call process_series."""
     while True:
         job = jobs.get()
@@ -537,7 +586,8 @@ def _worker_align(jobs, results, out_images_dir, out_masks_dir):
             out_aligned = str(base_out / sub / "aligned")
             out_matches = str(base_out / sub / "matches")
             out_masks = str(Path(out_masks_dir) / sub / "masks")
-            res = process_series(job["series_img"], job["series_msk_seg"], job["series_msk_det"], out_aligned, out_matches, out_masks)
+            out_overlays = str(Path(out_overlays_dir) / sub)
+            res = process_series(job["series_img"], job["series_msk_seg"], job["series_msk_det"], out_aligned, out_matches, out_masks, out_overlays)
             results.put((job.get("uid"), True, res))
         except Exception as e:
             results.put((job.get("uid"), False, str(e)))
@@ -562,22 +612,18 @@ if __name__ == "__main__":
     # output directories for aligned results
     out_images_dir = BASE_DIR / "aligned" / subdir / "images"
     out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
-
-    # # for testing
-    # OUT_DIR = Path("/agroscope/Data-Work-CH/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # out_images_dir = OUT_DIR / "aligned" / subdir / "images"
-    # out_masks_dir = OUT_DIR / "aligned" / subdir / "masks"
+    out_overlays_dir = BASE_DIR / "aligned" / subdir / "overlays"
 
     # collect all series for images and masks
     all_series_img = get_series(path_images=os.path.join(dir_img))
     all_series_msk_seg = get_series(path_images=os.path.join(dir_msk_seg))
     all_series_msk_det = get_series(path_images=os.path.join(dir_msk_det))
 
-    # # optional: filter series by pattern
-    # PATTERN = "CH13063920260667"
-    # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
-    # all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
-    # all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
+    # optional: filter series by pattern
+    PATTERN = "081913_CH13063920260578"
+    all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
+    all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
+    all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
 
     # build mask lookups by uid for segmentation and detection masks
     mask_lookup_seg = { _uid_from_path(s[0]): s for s in all_series_msk_seg if s }
@@ -609,12 +655,12 @@ if __name__ == "__main__":
         results_q = m.Queue()
         processes = []
 
-        n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 2)        
-        # n_workers = 1
+        # n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 2)        
+        n_workers = 2
         print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
 
         for _ in range(n_workers):
-            p = Process(target=_worker_align, args=(jobs, results_q, out_images_dir, out_masks_dir))
+            p = Process(target=_worker_align, args=(jobs, results_q, out_images_dir, out_masks_dir, out_overlays_dir))
             p.daemon = True
             p.start()
             processes.append(p)
