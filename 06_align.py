@@ -15,6 +15,8 @@ from multiprocessing import Manager, Process
 from pathlib import Path
 import sys
 
+cv2.setNumThreads(1)
+
 def _uid_from_path(p: str) -> str:
     parts = os.path.splitext(os.path.basename(p))[0].split("_")
     return "_".join(parts[2:4])
@@ -596,10 +598,10 @@ def _worker_align(jobs, results, out_images_dir, out_masks_dir, out_overlays_dir
 if __name__ == "__main__":
 
     # directories
-    BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # BASE_DIR = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
-    # subdir = sys.argv[1]
-    subdir = "2"
+    # BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    BASE_DIR = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
+    subdir = sys.argv[1]
+    # subdir = "2"
 
     print(subdir)
 
@@ -655,8 +657,8 @@ if __name__ == "__main__":
         results_q = m.Queue()
         processes = []
 
-        # n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 2)        
-        n_workers = 2
+        n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 1)        
+        # n_workers = 2
         print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
 
         for _ in range(n_workers):
