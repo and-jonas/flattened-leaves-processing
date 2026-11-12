@@ -25,7 +25,7 @@ echo "TASK: $SLURM_ARRAY_TASK_ID"
 cd ~/flattened-leaves-processing
 source .venv/bin/activate
 
-echo "Running: python 05_align.py ${SLURM_ARRAY_TASK_ID}"
-python 05_align.py $SLURM_ARRAY_TASK_ID
+echo "Running: python 06_align.py ${SLURM_ARRAY_TASK_ID}"
+python 06_align.py $SLURM_ARRAY_TASK_ID
 
 echo "Finished task ${SLURM_ARRAY_TASK_ID}"
