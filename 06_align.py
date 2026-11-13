@@ -114,27 +114,6 @@ def warp_to_reference(src, M, ref_shape, is_mask=False):
         warped = warped.astype(src_dtype)
     return warped
 
-# def get_leaf_mask(mask, min_area=120000):
-#     """
-#     Get a cleaned binary leaf mask from a multiclass segmentation mask.
-#     """
-
-#     leaf = (mask > 0).astype(np.uint8)
-
-#     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-#         leaf,
-#         connectivity=8
-#     )
-
-#     cleaned = np.zeros_like(leaf)
-
-#     for label in range(1, num_labels):  # skip background
-#         area = stats[label, cv2.CC_STAT_AREA]
-#         if area >= min_area:
-#             cleaned[labels == label] = 1
-
-#     return cleaned
-
 def get_leaf_mask(
     mask,
     min_area=120000,
@@ -631,7 +610,7 @@ if __name__ == "__main__":
     all_series_msk_det = get_series(path_images=os.path.join(dir_msk_det))
 
     # # optional: filter series by pattern
-    # PATTERN = "081913_CH13063920260578"
+    # PATTERN = "CH13063920260607"
     # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
     # all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
     # all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
