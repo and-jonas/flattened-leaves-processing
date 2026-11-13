@@ -448,7 +448,7 @@ def plot_inlier_matches(img1, img2, kp1, kp2, matches, inliers_mask, scale=0.5, 
     else:
         plt.show()
 
-def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, out_matches_dir, out_masks_dir, out_overlays_dir):
+def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, out_matches_dir, out_masks_dir, out_overlays_dir: Optional[str]):
     """Process a single leaf series: detect features, match, stitch and save outputs.
 
     `series_img`, `series_msk_seg`, and `series_msk_det` are lists of file paths (strings).
@@ -465,13 +465,14 @@ def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, 
     msk_seg = [read_image(p, mode="mask") for p in series_msk_seg]
     msk_det = [read_image(p, mode="mask") for p in series_msk_det]
 
-    os.makedirs(out_overlays_dir, exist_ok=True)
+    if out_overlays_dir is not None:
+        os.makedirs(out_overlays_dir, exist_ok=True)
 
     # get leaf masks and save boundary overlays
     leaf_masks: List[np.ndarray] = []
     for mask_arr, mask_path in zip(msk_seg, series_msk_seg):
         base = os.path.splitext(os.path.basename(mask_path))[0]
-        overlay_path = os.path.join(out_overlays_dir, f"{base}_overlay.png")
+        overlay_path = os.path.join(out_overlays_dir, f"{base}_overlay.png") if out_overlays_dir is not None else None
         leaf_masks.append(get_leaf_mask(mask_arr, overlay_savepath=overlay_path))
     # get combined masks
     msk = [np.where(det > 0, det + 4, seg) for seg, det in zip(msk_seg, msk_det)]
@@ -562,7 +563,7 @@ def process_series(series_img, series_msk_seg, series_msk_det, out_aligned_dir, 
     return {"uid": uid, "status": "ok", "saved_pairs": saved}
 
 
-def _worker_align(jobs, results, out_images_dir, out_masks_dir, out_overlays_dir):
+def _worker_align(jobs, results, out_images_dir, out_masks_dir, out_overlays_dir: Optional[str]):
     """Worker process: consume series jobs and call process_series."""
     while True:
         job = jobs.get()
@@ -576,7 +577,7 @@ def _worker_align(jobs, results, out_images_dir, out_masks_dir, out_overlays_dir
             out_aligned = str(base_out / sub / "aligned")
             out_matches = str(base_out / sub / "matches")
             out_masks = str(Path(out_masks_dir) / sub / "masks")
-            out_overlays = str(Path(out_overlays_dir) / sub)
+            out_overlays = str(Path(out_overlays_dir) / sub) if out_overlays_dir is not None else None
             res = process_series(job["series_img"], job["series_msk_seg"], job["series_msk_det"], out_aligned, out_matches, out_masks, out_overlays)
             results.put((job.get("uid"), True, res))
         except Exception as e:
@@ -588,8 +589,8 @@ if __name__ == "__main__":
     # directories
     # BASE_DIR = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
     BASE_DIR = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
-    subdir = sys.argv[1]
-    # subdir = "2"
+    # subdir = sys.argv[1]
+    subdir = "2"
 
     print(subdir)
 
@@ -600,20 +601,21 @@ if __name__ == "__main__":
     print(dir_img)
 
     # output directories for aligned results
+    SAVE_OVERLAYS = False
     out_images_dir = BASE_DIR / "aligned" / subdir / "images"
     out_masks_dir = BASE_DIR / "aligned" / subdir / "masks"
-    out_overlays_dir = BASE_DIR / "aligned" / subdir / "overlays"
+    out_overlays_dir = (BASE_DIR / "aligned" / subdir / "overlays") if SAVE_OVERLAYS else None
 
     # collect all series for images and masks
     all_series_img = get_series(path_images=os.path.join(dir_img))
     all_series_msk_seg = get_series(path_images=os.path.join(dir_msk_seg))
     all_series_msk_det = get_series(path_images=os.path.join(dir_msk_det))
 
-    # # optional: filter series by pattern
-    # PATTERN = "CH13063920260607"
-    # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
-    # all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
-    # all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
+    # optional: filter series by pattern
+    PATTERN = "CH13063920260578"
+    all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
+    all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
+    all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
 
     # build mask lookups by uid for segmentation and detection masks
     mask_lookup_seg = { _uid_from_path(s[0]): s for s in all_series_msk_seg if s }
@@ -645,7 +647,7 @@ if __name__ == "__main__":
         results_q = m.Queue()
         processes = []
 
-        n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) - 1)        
+        n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) )        
         # n_workers = 2
         print(f"Running alignment on {len(jobs_list)} series with {n_workers} workers")
 
