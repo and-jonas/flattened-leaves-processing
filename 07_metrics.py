@@ -181,8 +181,6 @@ def process_item(args):
         else:
             pd.DataFrame(columns=['area', 'perimeter']).to_csv(lesion_data_path / csv_name, index=False)
 
-        print(f"Processed {stem}")
-
     except Exception:
         # log exception to per-run errors.log and continue processing other items
         try:
@@ -224,7 +222,7 @@ def main(aligned=False):
         print("No valid tasks to process.")
         return
 
-    n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", 1)) - 2)  # leave 2 CPUs free
+    n_workers = max(1, int(os.environ.get("SLURM_CPUS_PER_TASK", 1)) - 1)  # leave 1 CPU free
     with Pool(processes=n_workers) as pool:
         if tqdm is not None:
             for _ in tqdm(pool.imap_unordered(process_item, tasks), total=len(tasks), desc="Processing", unit="item"):
@@ -233,28 +231,34 @@ def main(aligned=False):
             # fallback: no progress bar
             pool.map(process_item, tasks)
 
-
-if __name__ == "__main__":
-
-    base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    # base_path = Path(os.environ["SCRATCH"])
-
-    aligned = False  # set to False if using individual images instead of aligned images
-
+def configure_paths(base_path, aligned):
     if not aligned:
         seg_masks = list((base_path / "predictions").glob("*/symptoms_seg/pred/*.png"))
         det_masks = list((base_path / "predictions").glob("*/symptoms_det/pred/*.png"))
         rgb_imgs = list((base_path / "inference_crops").glob("*/*.png"))
+        out_path = base_path / "metrics2" / "unaligned"
     else:
         seg_masks = list((base_path / "aligned").glob("*/masks/masks/*.png"))
         det_masks = list((base_path / "aligned").glob("*/masks/masks/*.png"))
         rgb_imgs = list((base_path / "aligned").glob("*/images/aligned/*.png"))
+        out_path = base_path / "metrics2" / "aligned"
 
-    out_path = base_path / "metrics"
     leaf_data_path = out_path / "leaf"
     lesion_data_path = out_path / "lesion"
 
     for p in [out_path, leaf_data_path, lesion_data_path]:
         p.mkdir(parents=True, exist_ok=True)
 
-    main(aligned=aligned)
+    return seg_masks, det_masks, rgb_imgs, out_path, leaf_data_path, lesion_data_path
+
+
+if __name__ == "__main__":
+
+    # base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
+    base_path = Path(os.environ["SCRATCH"])
+
+    for aligned in [False, True]:
+        print(f"\nRunning metrics with aligned={aligned}")
+        seg_masks, det_masks, rgb_imgs, out_path, leaf_data_path, lesion_data_path = configure_paths(base_path, aligned)
+        main(aligned=aligned)
+    
