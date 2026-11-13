@@ -611,11 +611,11 @@ if __name__ == "__main__":
     all_series_msk_seg = get_series(path_images=os.path.join(dir_msk_seg))
     all_series_msk_det = get_series(path_images=os.path.join(dir_msk_det))
 
-    # optional: filter series by pattern
-    PATTERN = "CH13063920260578"
-    all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
-    all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
-    all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
+    # # optional: filter series by pattern
+    # PATTERN = "CH13063920260578"
+    # all_series_img = [s for s in all_series_img if any(PATTERN in os.path.basename(p) for p in s)]
+    # all_series_msk_seg = [s for s in all_series_msk_seg if any(PATTERN in os.path.basename(p) for p in s)]
+    # all_series_msk_det = [s for s in all_series_msk_det if any(PATTERN in os.path.basename(p) for p in s)]
 
     # build mask lookups by uid for segmentation and detection masks
     mask_lookup_seg = { _uid_from_path(s[0]): s for s in all_series_msk_seg if s }
