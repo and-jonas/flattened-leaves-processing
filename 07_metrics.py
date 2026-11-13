@@ -255,7 +255,7 @@ def configure_paths(base_path, aligned):
 if __name__ == "__main__":
 
     # base_path = Path("O:/Data-Work/22_Plant_Production-CH/224_Digitalisation/Jonas_Anderegg_Files/E_Work/03_PreDiMix/Uitikon/20260623_Uitikon_Leaf")
-    base_path = Path(os.environ["SCRATCH"])
+    base_path = Path(os.environ["SCRATCH"]) / "03_PreDiMix"
 
     for aligned in [False, True]:
         print(f"\nRunning metrics with aligned={aligned}")
