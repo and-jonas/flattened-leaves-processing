@@ -229,96 +229,105 @@ def get_leaf_mask(
         sigma=sigma
     )
 
-    # Truncate leaf extremities
-    width = upper_smooth - lower_smooth
-
-    trim_fraction = 0.05  # Remove 5% from each end
-
-    start = int(len(width) * trim_fraction)
-    end = int(len(width) * (1 - trim_fraction))
-
-    valid_length = np.zeros(len(width), dtype=bool)
-    valid_length[start:end] = True
-
-    # Transform smoothed PCA boundaries back to image coordinates
-    t_profile = positions + t_min + 0.5
-
-    lower_xy = (
-        center
-        + t_profile[:, None] * major
-        + lower_smooth[:, None] * minor
-    )
-
-    upper_xy = (
-        center
-        + t_profile[:, None] * major
-        + upper_smooth[:, None] * minor
-    )
-
-    fig, ax = plt.subplots(figsize=(18, 6))
-
-    ax.imshow(leaf, cmap="gray")
-
-    ax.plot(
-        lower_xy[start:end, 0],
-        lower_xy[start:end, 1],
-        color="red",
-        linewidth=2,
-        label="Lower boundary"
-    )
-
-    ax.plot(
-        upper_xy[start:end, 0],
-        upper_xy[start:end, 1],
-        color="cyan",
-        linewidth=2,
-        label="Upper boundary"
-    )
-
-    ax.legend()
-    ax.axis("off")
-    plt.tight_layout()
-    if overlay_savepath is not None:
-        os.makedirs(os.path.dirname(overlay_savepath), exist_ok=True)
-        fig.savefig(overlay_savepath, bbox_inches="tight")
-        plt.close(fig)
-    else:
-        plt.show()
-
-    # move boundaries inward to avoid including background pixels at leaf tips
-    margin = 100
+    # 5. Move boundaries inward by 20 pixels
+    margin = 20
     lower_smooth += margin
     upper_smooth -= margin
 
-    # Reconstruct mask using PCA coordinates
-    h, w = mask.shape[:2]
-    yy, xx = np.indices((h, w))
+    # 6. Exclude leftmost 5% of leaf length
+    trim_fraction = 0.05
+    t_range = longitudinal.max() - longitudinal.min()
 
-    pixels = np.column_stack((xx.ravel(), yy.ravel())).astype(np.float64)
-    pixels -= center
+    # PCA axis direction is arbitrary
+    if major[0] > 0:
+        t_cutoff = longitudinal.min() + trim_fraction * t_range
+        valid_length = longitudinal >= t_cutoff
+    else:
+        t_cutoff = longitudinal.max() - trim_fraction * t_range
+        valid_length = longitudinal <= t_cutoff
 
-    t = pixels @ major
-    s = pixels @ minor
-
-    # Use same longitudinal bins as boundary estimation
-    idx = np.floor(t - t_min).astype(int)
-
-    valid = (idx >= 0) & (idx < n_bins)
-
-    keep = np.zeros(len(idx), dtype=bool)
-
-    keep[valid] = (
-        (s[valid] >= lower_smooth[idx[valid]]) &
-        (s[valid] <= upper_smooth[idx[valid]]) &
-        valid_length[idx[valid]]
+    # 7. Select pixels inside smoothed boundaries
+    keep = (
+        (transverse >= lower_smooth[idx]) &
+        (transverse <= upper_smooth[idx]) &
+        valid_length
     )
 
-    cleaned = keep.reshape(h, w).astype(np.uint8)
+    cleaned = np.zeros_like(leaf, dtype=np.uint8)
+    cleaned[y[keep], x[keep]] = 1
 
-    # Never include pixels outside the original detected leaf
-    cleaned_intersect = cleaned & leaf.astype(bool)
+    # 8. Plot smoothed boundaries and final feature-matching mask
+    if overlay_savepath is not None:
 
-    return cleaned_intersect.astype(np.uint8)
+        # Transform PCA boundaries back to image coordinates
+        t_profile = positions + t_min + 0.5
+
+        lower_xy = (
+            center
+            + t_profile[:, None] * major
+            + lower_smooth[:, None] * minor
+        )
+
+        upper_xy = (
+            center
+            + t_profile[:, None] * major
+            + upper_smooth[:, None] * minor
+        )
+
+        # Only show boundaries after the left-side cutoff
+        if major[0] > 0:
+            plot_valid = t_profile >= t_cutoff
+        else:
+            plot_valid = t_profile <= t_cutoff
+
+        fig, ax = plt.subplots(figsize=(18, 6))
+
+        # Original leaf segmentation
+        ax.imshow(leaf, cmap="gray", alpha=0.4)
+
+        # Final feature-matching region
+        ax.imshow(
+            np.ma.masked_where(cleaned == 0, cleaned),
+            cmap="Greens",
+            alpha=0.5,
+            interpolation="nearest"
+        )
+
+        # Smoothed boundaries
+        ax.plot(
+            lower_xy[plot_valid, 0],
+            lower_xy[plot_valid, 1],
+            color="red",
+            linewidth=2,
+            label="Lower boundary (+20 px)"
+        )
+
+        ax.plot(
+            upper_xy[plot_valid, 0],
+            upper_xy[plot_valid, 1],
+            color="cyan",
+            linewidth=2,
+            label="Upper boundary (-20 px)"
+        )
+
+        ax.set_title("Feature-matching region")
+        ax.legend()
+        ax.axis("off")
+
+        plt.tight_layout()
+
+        overlay_savepath = Path(overlay_savepath)
+        overlay_savepath.parent.mkdir(parents=True, exist_ok=True)
+
+        fig.savefig(
+            overlay_savepath,
+            dpi=150,
+            bbox_inches="tight"
+        )
+
+        plt.close(fig)
+
+    return cleaned
 
 
 def get_stitch_geometry(img1, img2, M):
